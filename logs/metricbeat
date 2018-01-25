@@ -1,0 +1,4 @@
+2018-01-23T18:47:22.872+0800	INFO	instance/beat.go:477	Home path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat] Config path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat] Data path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat/data] Logs path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat/logs]
+2018-01-23T18:47:22.872+0800	INFO	instance/beat.go:484	Beat UUID: 40d25df8-6199-4337-b156-aa69695ea225
+2018-01-23T18:47:22.872+0800	INFO	instance/beat.go:208	Setup Beat: metricbeat; Version: 7.0.0-alpha1
+2018-01-23T18:47:22.873+0800	ERROR	instance/beat.go:678	Exiting: setup.template.name and setup.template.pattern have to be set if index name is modified.

@@ -1,0 +1,13 @@
+2018-01-23T11:02:41.393+0800	INFO	instance/beat.go:468	Home path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat] Config path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat] Data path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat/data] Logs path: [/Users/zhaopeng/Documents/local_project/goworks/src/github.com/tinytub/examplebeat/logs]
+2018-01-23T11:02:41.394+0800	INFO	instance/beat.go:475	Beat UUID: 40d25df8-6199-4337-b156-aa69695ea225
+2018-01-23T11:02:41.394+0800	INFO	instance/beat.go:213	Setup Beat: examplebeat; Version: 7.0.0-alpha1
+2018-01-23T11:02:41.395+0800	INFO	elasticsearch/client.go:145	Elasticsearch url: http://localhost:9200
+2018-01-23T11:02:41.395+0800	INFO	pipeline/module.go:76	Beat name: zhaopeng-MacBook-Pro.local
+2018-01-23T11:02:41.396+0800	INFO	instance/beat.go:301	examplebeat start running.
+2018-01-23T11:02:41.396+0800	INFO	beater/examplebeat.go:35	examplebeat is running! Hit CTRL-C to stop it.
+2018-01-23T11:02:41.396+0800	INFO	[monitoring]	log/log.go:95	Starting metrics logging every 30s
+2018-01-23T11:02:42.398+0800	INFO	beater/examplebeat.go:60	Event sent
+2018-01-23T11:02:42.603+0800	INFO	instance/beat.go:308	examplebeat stopped.
+2018-01-23T11:02:42.606+0800	INFO	[monitoring]	log/log.go:130	Total non-zero metrics	{"monitoring": {"metrics": {"beat":{"cpu":{"total":{"value":43}},"info":{"ephemeral_id":"81f28e2c-1bc7-4d35-a250-2400cca48d1f","uptime":{"ms":1222}},"memstats":{"gc_next":4473924,"memory_alloc":2719464,"memory_total":2719464,"rss":14860288}},"libbeat":{"config":{"module":{"running":0}},"output":{"type":"elasticsearch"},"pipeline":{"clients":0,"events":{"active":1,"published":1,"total":1}}},"system":{"cpu":{"cores":4},"load":{"1":2.5259,"15":2.3623,"5":2.6069,"norm":{"1":0.6315,"15":0.5906,"5":0.6517}}}}}}
+2018-01-23T11:02:42.606+0800	INFO	[monitoring]	log/log.go:131	Uptime: 1.222554176s
+2018-01-23T11:02:42.606+0800	INFO	[monitoring]	log/log.go:108	Stopping metrics logging.
