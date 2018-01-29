@@ -22,16 +22,12 @@ import (
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/common/cfgwarn"
 	"github.com/elastic/beats/libbeat/common/file"
-	"github.com/elastic/beats/libbeat/dashboards"
 	"github.com/elastic/beats/libbeat/logp"
 	"github.com/elastic/beats/libbeat/monitoring"
 	"github.com/elastic/beats/libbeat/monitoring/report"
-	"github.com/elastic/beats/libbeat/outputs/elasticsearch"
 	"github.com/elastic/beats/libbeat/paths"
 	"github.com/elastic/beats/libbeat/plugin"
 	"github.com/elastic/beats/libbeat/publisher/pipeline"
-	svc "github.com/elastic/beats/libbeat/service"
-	"github.com/elastic/beats/libbeat/template"
 	"github.com/elastic/beats/libbeat/version"
 
 	// Register publisher pipeline modules
@@ -43,12 +39,10 @@ import (
 	//	_ "github.com/elastic/beats/libbeat/processors/add_docker_metadata"
 	//	_ "github.com/elastic/beats/libbeat/processors/add_kubernetes_metadata"
 	_ "github.com/elastic/beats/libbeat/processors/add_locale"
-
 	// Register autodiscover providers
 	//	_ "github.com/elastic/beats/libbeat/autodiscover/providers/docker"
-
 	// Register default monitoring reporting
-	_ "github.com/elastic/beats/libbeat/monitoring/report/elasticsearch"
+	//_ "github.com/elastic/beats/libbeat/monitoring/report/elasticsearch"
 )
 
 // Beat provides the runnable and configurable instance of a beat.
@@ -202,10 +196,12 @@ func (b *Beat) createBeater(bt beat.Creator) (beat.Beater, error) {
 
 	logp.Info("Setup Beat: %s; Version: %s", b.Info.Beat, b.Info.Version)
 
-	err = b.registerTemplateLoading()
-	if err != nil {
-		return nil, err
-	}
+	/*
+		err = b.registerTemplateLoading()
+		if err != nil {
+			return nil, err
+		}
+	*/
 
 	reg := monitoring.Default.GetRegistry("libbeat")
 	if reg == nil {
@@ -237,8 +233,8 @@ func (b *Beat) launch(bt beat.Creator) error {
 		return err
 	}
 
-	svc.BeforeRun()
-	defer svc.Cleanup()
+	//	svc.BeforeRun()
+	//	defer svc.Cleanup()
 
 	beater, err := b.createBeater(bt)
 	if err != nil {
@@ -260,18 +256,21 @@ func (b *Beat) launch(bt beat.Creator) error {
 		return beat.GracefulExit
 	}
 
-	svc.HandleSignals(beater.Stop)
+	//	svc.HandleSignals(beater.Stop)
 
-	err = b.loadDashboards(false)
-	if err != nil {
-		return err
-	}
-	if setup && b.SetupMLCallback != nil {
-		err = b.SetupMLCallback(&b.Beat)
+	/*
+		err = b.loadDashboards(false)
 		if err != nil {
 			return err
 		}
-	}
+
+			if setup && b.SetupMLCallback != nil {
+				err = b.SetupMLCallback(&b.Beat)
+				if err != nil {
+					return err
+				}
+			}
+	*/
 
 	logp.Info("%s start running.", b.Info.Beat)
 	defer logp.Info("%s stopped.", b.Info.Beat)
@@ -303,6 +302,7 @@ func (b *Beat) TestConfig(bt beat.Creator) error {
 	}())
 }
 
+/*
 // Setup registers ES index template and kibana dashboards
 func (b *Beat) Setup(bt beat.Creator, template, dashboards, machineLearning bool) error {
 	return handleError(func() error {
@@ -369,6 +369,7 @@ func (b *Beat) Setup(bt beat.Creator, template, dashboards, machineLearning bool
 		return nil
 	}())
 }
+*/
 
 // handleFlags parses the command line flags. It handles the '-version' flag
 // and invokes the HandleFlags callback if implemented by the Beat.
@@ -525,6 +526,7 @@ func openRegular(filename string) (*os.File, error) {
 	return f, nil
 }
 
+/*
 func (b *Beat) loadDashboards(force bool) error {
 	if setup || force {
 		// -setup implies dashboards.enabled=true
@@ -553,10 +555,12 @@ func (b *Beat) loadDashboards(force bool) error {
 
 	return nil
 }
+*/
 
 // registerTemplateLoading registers the loading of the template as a callback with
 // the elasticsearch output. It is important the the registration happens before
 // the publisher is created.
+/*
 func (b *Beat) registerTemplateLoading() error {
 
 	var cfg template.TemplateConfig
@@ -622,6 +626,7 @@ func (b *Beat) templateLoadingCallback() (func(esClient *elasticsearch.Client) e
 
 	return callback, nil
 }
+*/
 
 // handleError handles the given error by logging it and then returning the
 // error. If the err is nil or is a GracefulExit error then the method will
