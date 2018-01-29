@@ -13,15 +13,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/satori/go.uuid"
+
 	"github.com/elastic/beats/libbeat/api"
 	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/cfgfile"
+	"github.com/elastic/beats/libbeat/cloudid"
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/common/cfgwarn"
 	"github.com/elastic/beats/libbeat/common/file"
+	"github.com/elastic/beats/libbeat/dashboards"
 	"github.com/elastic/beats/libbeat/logp"
-	"github.com/elastic/beats/libbeat/logp/configure"
 	"github.com/elastic/beats/libbeat/monitoring"
+	"github.com/elastic/beats/libbeat/monitoring/report"
 	"github.com/elastic/beats/libbeat/outputs/elasticsearch"
 	"github.com/elastic/beats/libbeat/paths"
 	"github.com/elastic/beats/libbeat/plugin"
@@ -29,13 +33,19 @@ import (
 	svc "github.com/elastic/beats/libbeat/service"
 	"github.com/elastic/beats/libbeat/template"
 	"github.com/elastic/beats/libbeat/version"
-	"github.com/satori/go.uuid"
 
 	// Register publisher pipeline modules
 	_ "github.com/elastic/beats/libbeat/publisher/includes"
 
+	// Register default processors.
 	_ "github.com/elastic/beats/libbeat/processors/actions"
+	//	_ "github.com/elastic/beats/libbeat/processors/add_cloud_metadata"
+	//	_ "github.com/elastic/beats/libbeat/processors/add_docker_metadata"
+	//	_ "github.com/elastic/beats/libbeat/processors/add_kubernetes_metadata"
 	_ "github.com/elastic/beats/libbeat/processors/add_locale"
+
+	// Register autodiscover providers
+	//	_ "github.com/elastic/beats/libbeat/autodiscover/providers/docker"
 
 	// Register default monitoring reporting
 	_ "github.com/elastic/beats/libbeat/monitoring/report/elasticsearch"
@@ -47,7 +57,6 @@ type Beat struct {
 
 	Config    beatConfig
 	RawConfig *common.Config // Raw config that can be unpacked to get Beat specific config data.
-	//keystore  keystore.Keystore
 }
 
 type beatConfig struct {
@@ -62,28 +71,29 @@ type beatConfig struct {
 	// beat internal components configurations
 	HTTP    *common.Config `config:"http"`
 	Path    paths.Path     `config:"path"`
-	Logging *common.Config `config:"logging"`
-	//	MetricLogging *common.Config `config:"logging.metrics"`
-	//Keystore      *common.Config `config:"keystore"`
+	Logging logp.Logging   `config:"logging"`
 
 	// output/publishing related configurations
-	Pipeline pipeline.Config `config:",inline"`
-	//	Monitoring *common.Config  `config:"xpack.monitoring"`
+	Pipeline   pipeline.Config `config:",inline"`
+	Monitoring *common.Config  `config:"xpack.monitoring"`
 
 	// elastic stack 'setup' configurations
-	//	Dashboards *common.Config `config:"setup.dashboards"`
-	Template *common.Config `config:"setup.template"`
-	//	Kibana     *common.Config `config:"setup.kibana"`
+	Dashboards *common.Config `config:"setup.dashboards"`
+	Template   *common.Config `config:"setup.template"`
+	Kibana     *common.Config `config:"setup.kibana"`
 }
 
 var (
 	printVersion bool
 	setup        bool
+	startTime    time.Time
 )
 
 var debugf = logp.MakeDebug("beat")
 
 func init() {
+	startTime = time.Now()
+
 	initRand()
 
 	flag.BoolVar(&printVersion, "version", false, "Print the version and exit")
@@ -111,7 +121,6 @@ func initRand() {
 // implementation. bt is the `Creator` callback for creating a new beater
 // instance.
 // XXX Move this as a *Beat method?
-// 初始化 beater 实现
 func Run(name, idxPrefix, version string, bt beat.Creator) error {
 	return handleError(func() error {
 		b, err := NewBeat(name, idxPrefix, version)
@@ -123,7 +132,6 @@ func Run(name, idxPrefix, version string, bt beat.Creator) error {
 }
 
 // NewBeat creates a new beat instance
-// 创建一个新的 beat 实例
 func NewBeat(name, indexPrefix, v string) (*Beat, error) {
 	if v == "" {
 		v = version.GetDefaultVersion()
@@ -152,7 +160,6 @@ func NewBeat(name, indexPrefix, v string) (*Beat, error) {
 }
 
 // init does initialization of things common to all actions (read confs, flags)
-// 初始化所有通用的动作，如读取配置文件，命令行标签等
 func (b *Beat) Init() error {
 	err := b.handleFlags()
 	if err != nil {
@@ -179,20 +186,11 @@ func (b *Beat) BeatConfig() (*common.Config, error) {
 			return nil, err
 		}
 
-		fmt.Printf("有 sub config，%+v\n", sub)
-
 		return sub, nil
 	}
 
 	return common.NewConfig(), nil
 }
-
-/*
-// Keystore return the configured keystore for this beat
-func (b *Beat) Keystore() keystore.Keystore {
-	return b.keystore
-}
-*/
 
 // create and return the beater, this method also initializes all needed items,
 // including template registering, publisher, xpack monitoring
@@ -204,7 +202,6 @@ func (b *Beat) createBeater(bt beat.Creator) (beat.Beater, error) {
 
 	logp.Info("Setup Beat: %s; Version: %s", b.Info.Beat, b.Info.Version)
 
-	//模板相关初始化
 	err = b.registerTemplateLoading()
 	if err != nil {
 		return nil, err
@@ -215,15 +212,7 @@ func (b *Beat) createBeater(bt beat.Creator) (beat.Beater, error) {
 		reg = monitoring.Default.NewRegistry("libbeat")
 	}
 
-	/*
-		err = setupMetrics(b.Info.Beat)
-		if err != nil {
-			return nil, err
-		}
-	*/
-
 	debugf("Initializing output plugins")
-	// 初始化任务隧道？
 	pipeline, err := pipeline.Load(b.Info, reg, b.Config.Pipeline, b.Config.Output)
 	if err != nil {
 		return nil, fmt.Errorf("error initializing publisher: %v", err)
@@ -243,15 +232,11 @@ func (b *Beat) createBeater(bt beat.Creator) (beat.Beater, error) {
 }
 
 func (b *Beat) launch(bt beat.Creator) error {
-	defer logp.Sync()
-
-	// 初始化配置文件和命令行参数
 	err := b.Init()
 	if err != nil {
 		return err
 	}
 
-	// 进程启动时做一些 cpu profile 操作
 	svc.BeforeRun()
 	defer svc.Cleanup()
 
@@ -260,44 +245,27 @@ func (b *Beat) launch(bt beat.Creator) error {
 		return err
 	}
 
-	/*
-		if b.Config.Monitoring.Enabled() {
-			reporter, err := report.New(b.Info, b.Config.Monitoring, b.Config.Output)
-			if err != nil {
-				return err
-			}
-			defer reporter.Stop()
-		}
-	*/
-
-	/*
-		if b.Config.MetricLogging == nil || b.Config.MetricLogging.Enabled() {
-			reporter, err := log.MakeReporter(b.Info, b.Config.MetricLogging)
-			if err != nil {
-				return err
-			}
-			defer reporter.Stop()
-		}
-	*/
-
-	// If -configtest was specified, exit now prior to run.
-	/*
-		if cfgfile.IsTestConfig() {
-			cfgwarn.Deprecate("6.0", "-configtest flag has been deprecated, use configtest subcommand")
-			fmt.Println("Config OK")
-			return beat.GracefulExit
-		}
-	*/
-
-	svc.HandleSignals(beater.Stop)
-
-	/*
-		err = b.loadDashboards(false)
+	if b.Config.Monitoring.Enabled() {
+		reporter, err := report.New(b.Info, b.Config.Monitoring, b.Config.Output)
 		if err != nil {
 			return err
 		}
-	*/
+		defer reporter.Stop()
+	}
 
+	// If -configtest was specified, exit now prior to run.
+	if cfgfile.IsTestConfig() {
+		cfgwarn.Deprecate("6.0", "-configtest flag has been deprecated, use configtest subcommand")
+		fmt.Println("Config OK")
+		return beat.GracefulExit
+	}
+
+	svc.HandleSignals(beater.Stop)
+
+	err = b.loadDashboards(false)
+	if err != nil {
+		return err
+	}
 	if setup && b.SetupMLCallback != nil {
 		err = b.SetupMLCallback(&b.Beat)
 		if err != nil {
@@ -307,8 +275,8 @@ func (b *Beat) launch(bt beat.Creator) error {
 
 	logp.Info("%s start running.", b.Info.Beat)
 	defer logp.Info("%s stopped.", b.Info.Beat)
+	defer logp.LogTotalExpvars(&b.Config.Logging)
 
-	// http是否打开 http 接口
 	if b.Config.HTTP.Enabled() {
 		api.Start(b.Config.HTTP, b.Info)
 	}
@@ -316,6 +284,7 @@ func (b *Beat) launch(bt beat.Creator) error {
 	return beater.Run(&b.Beat)
 }
 
+// TestConfig check all settings are ok and the beat can be run
 func (b *Beat) TestConfig(bt beat.Creator) error {
 	return handleError(func() error {
 		err := b.Init()
@@ -380,24 +349,22 @@ func (b *Beat) Setup(bt beat.Creator, template, dashboards, machineLearning bool
 			fmt.Println("Loaded index template")
 		}
 
-		/*
-			if dashboards {
-				err = b.loadDashboards(true)
-				if err != nil {
-					return err
-				}
-
-				fmt.Println("Loaded dashboards")
+		if dashboards {
+			err = b.loadDashboards(true)
+			if err != nil {
+				return err
 			}
 
-			if machineLearning && b.SetupMLCallback != nil {
-				err = b.SetupMLCallback(&b.Beat)
-				if err != nil {
-					return err
-				}
-				fmt.Println("Loaded machine learning job configurations")
+			fmt.Println("Loaded dashboards")
+		}
+
+		if machineLearning && b.SetupMLCallback != nil {
+			err = b.SetupMLCallback(&b.Beat)
+			if err != nil {
+				return err
 			}
-		*/
+			fmt.Println("Loaded machine learning job configurations")
+		}
 
 		return nil
 	}())
@@ -415,6 +382,10 @@ func (b *Beat) handleFlags() error {
 		return beat.GracefulExit
 	}
 
+	if err := logp.HandleFlags(b.Info.Beat); err != nil {
+		return err
+	}
+
 	return cfgfile.HandleFlags()
 }
 
@@ -429,25 +400,10 @@ func (b *Beat) configure() error {
 		return fmt.Errorf("error loading config file: %v", err)
 	}
 
-	/*
-		// We have to initialize the keystore before any unpack or merging the cloud
-		// options.
-		keystoreCfg, _ := cfg.Child("keystore", -1)
-		defaultPathConfig, _ := cfg.String("path.config", -1)
-		defaultPathConfig = filepath.Join(defaultPathConfig, fmt.Sprintf("%s.keystore", b.Info.Beat))
-		store, err := keystore.Factory(keystoreCfg, defaultPathConfig)
-		if err != nil {
-			return fmt.Errorf("could not initialize the keystore: %v", err)
-		}
-
-		// TODO: Allow the options to be more flexible for dynamic changes
-		common.OverwriteConfigOpts(keystore.ConfigOpts(store))
-		b.keystore = store
-		err = cloudid.OverwriteSettings(cfg)
-		if err != nil {
-			return err
-		}
-	*/
+	err = cloudid.OverwriteSettings(cfg)
+	if err != nil {
+		return err
+	}
 
 	b.RawConfig = cfg
 	err = cfg.Unpack(&b.Config)
@@ -471,7 +427,8 @@ func (b *Beat) configure() error {
 		return fmt.Errorf("error setting default paths: %v", err)
 	}
 
-	if err := configure.Logging(b.Info.Beat, b.Config.Logging); err != nil {
+	err = logp.Init(b.Info.Beat, startTime, &b.Config.Logging)
+	if err != nil {
 		return fmt.Errorf("error initializing logging: %v", err)
 	}
 
@@ -568,7 +525,6 @@ func openRegular(filename string) (*os.File, error) {
 	return f, nil
 }
 
-/*
 func (b *Beat) loadDashboards(force bool) error {
 	if setup || force {
 		// -setup implies dashboards.enabled=true
@@ -597,7 +553,6 @@ func (b *Beat) loadDashboards(force bool) error {
 
 	return nil
 }
-*/
 
 // registerTemplateLoading registers the loading of the template as a callback with
 // the elasticsearch output. It is important the the registration happens before

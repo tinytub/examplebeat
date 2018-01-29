@@ -70,14 +70,11 @@ func (e *eventStore) empty() bool {
 }
 
 func newDNS(store *eventStore, verbose bool) *dnsPlugin {
-	level := logp.WarnLevel
 	if verbose {
-		level = logp.DebugLevel
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"dns"})
+	} else {
+		logp.LogInit(logp.LOG_EMERG, "", false, true, []string{"dns"})
 	}
-	logp.DevelopmentSetup(
-		logp.WithLevel(level),
-		logp.WithSelectors("dns"),
-	)
 
 	callback := func(beat.Event) {}
 	if store != nil {

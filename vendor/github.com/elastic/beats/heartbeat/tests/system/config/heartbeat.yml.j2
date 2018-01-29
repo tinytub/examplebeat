@@ -65,11 +65,6 @@ queue.mem:
 
 #================================ Outputs =====================================
 
-{%- if elasticsearch %}
-output.elasticsearch:
-  hosts: ["{{ elasticsearch.host }}"]
-{%- else %}
 output.file:
-  path: '{{ output_file_path|default(beat.working_dir + "/output") }}'
-  filename: {{ output_file_filename|default("heartbeat") }}
-{%- endif %}
+  path: {{ output_file_path|default(beat.working_dir + "/output") }}
+  filename: "{{ output_file_filename|default("heartbeat") }}"

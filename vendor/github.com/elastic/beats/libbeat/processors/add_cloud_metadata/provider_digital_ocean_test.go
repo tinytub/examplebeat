@@ -72,7 +72,9 @@ func initDigitalOceanTestServer() *httptest.Server {
 }
 
 func TestRetrieveDigitalOceanMetadata(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	server := initDigitalOceanTestServer()
 	defer server.Close()

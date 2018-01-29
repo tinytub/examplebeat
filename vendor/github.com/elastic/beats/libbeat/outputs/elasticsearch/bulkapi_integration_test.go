@@ -11,9 +11,11 @@ import (
 )
 
 func TestBulk(t *testing.T) {
-	logp.TestingSetup(logp.WithSelectors("elasticsearch"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"elasticsearch"})
+	}
 
-	client := getTestingElasticsearch(t)
+	client := GetTestingElasticsearch(t)
 	index := fmt.Sprintf("packetbeat-unittest-%d", os.Getpid())
 
 	ops := []map[string]interface{}{
@@ -60,9 +62,11 @@ func TestBulk(t *testing.T) {
 }
 
 func TestEmptyBulk(t *testing.T) {
-	logp.TestingSetup(logp.WithSelectors("elasticsearch"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"elasticsearch"})
+	}
 
-	client := getTestingElasticsearch(t)
+	client := GetTestingElasticsearch(t)
 	index := fmt.Sprintf("packetbeat-unittest-%d", os.Getpid())
 
 	body := make([]interface{}, 0, 10)
@@ -80,9 +84,11 @@ func TestEmptyBulk(t *testing.T) {
 }
 
 func TestBulkMoreOperations(t *testing.T) {
-	logp.TestingSetup(logp.WithSelectors("elasticsearch"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"elasticsearch"})
+	}
 
-	client := getTestingElasticsearch(t)
+	client := GetTestingElasticsearch(t)
 	index := fmt.Sprintf("packetbeat-unittest-%d", os.Getpid())
 
 	ops := []map[string]interface{}{

@@ -82,8 +82,5 @@ func NewDirectSession(dialInfo *mgo.DialInfo) (*mgo.Session, error) {
 		return nil, err
 	}
 
-	// Relax consistency mode so reading from a secondary is allowed
-	session.SetMode(mgo.Monotonic, true)
-
 	return session, nil
 }

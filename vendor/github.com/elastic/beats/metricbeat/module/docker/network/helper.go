@@ -3,9 +3,9 @@ package network
 import (
 	"time"
 
-	"github.com/docker/docker/api/types"
-
 	"github.com/elastic/beats/metricbeat/module/docker"
+
+	dc "github.com/fsouza/go-dockerclient"
 )
 
 type NetService struct {
@@ -60,12 +60,12 @@ func (n *NetService) getNetworkStatsPerContainer(rawStats []docker.Stat) []NetSt
 	return formattedStats
 }
 
-func (n *NetService) getNetworkStats(nameInterface string, rawNetStats *types.NetworkStats, myRawstats *docker.Stat) NetStats {
+func (n *NetService) getNetworkStats(nameInterface string, rawNetStats *dc.NetworkStats, myRawstats *docker.Stat) NetStats {
 	newNetworkStats := createNetRaw(myRawstats.Stats.Read, rawNetStats)
 	oldNetworkStat, exist := n.NetworkStatPerContainer[myRawstats.Container.ID][nameInterface]
 
 	netStats := NetStats{
-		Container:     docker.NewContainer(myRawstats.Container),
+		Container:     docker.NewContainer(&myRawstats.Container),
 		Time:          myRawstats.Stats.Read,
 		NameInterface: nameInterface,
 	}
@@ -88,7 +88,7 @@ func (n *NetService) getNetworkStats(nameInterface string, rawNetStats *types.Ne
 	return netStats
 }
 
-func createNetRaw(time time.Time, stats *types.NetworkStats) NetRaw {
+func createNetRaw(time time.Time, stats *dc.NetworkStats) NetRaw {
 	return NetRaw{
 		Time:      time,
 		RxBytes:   stats.RxBytes,

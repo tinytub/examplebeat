@@ -74,28 +74,6 @@ type Connection struct {
 	version string
 }
 
-type bulkIndexAction struct {
-	Index bulkEventMeta `json:"index" struct:"index"`
-}
-
-type bulkCreateAction struct {
-	Create bulkEventMeta `json:"create" struct:"create"`
-}
-
-type bulkEventMeta struct {
-	Index    string `json:"_index" struct:"_index"`
-	DocType  string `json:"_type" struct:"_type"`
-	Pipeline string `json:"pipeline,omitempty" struct:"pipeline,omitempty"`
-	ID       string `json:"_id,omitempty" struct:"_id,omitempty"`
-}
-
-type bulkResultStats struct {
-	acked        int // number of events ACKed by Elasticsearch
-	duplicates   int // number of events failed with `create` due to ID already being indexed
-	fails        int // number of failed events (can be retried)
-	nonIndexable int // number of failed events (not indexable -> must be dropped)
-}
-
 var (
 	nameItems  = []byte("items")
 	nameStatus = []byte("status")
@@ -305,25 +283,19 @@ func (client *Client) publishEvents(
 
 	// check response for transient errors
 	var failedEvents []publisher.Event
-	var stats bulkResultStats
 	if status != 200 {
 		failedEvents = data
-		stats.fails = len(failedEvents)
 	} else {
 		client.json.init(result.raw)
-		failedEvents, stats = bulkCollectPublishFails(&client.json, data)
+		failedEvents = bulkCollectPublishFails(&client.json, data)
 	}
 
 	failed := len(failedEvents)
 	if st := client.observer; st != nil {
-		dropped := stats.nonIndexable
-		duplicates := stats.duplicates
-		acked := len(data) - failed - dropped - duplicates
+		acked := len(data) - failed
 
 		st.Acked(acked)
 		st.Failed(failed)
-		st.Dropped(dropped)
-		st.Duplicate(duplicates)
 	}
 
 	if failed > 0 {
@@ -346,11 +318,7 @@ func bulkEncodePublishRequest(
 	okEvents := data[:0]
 	for i := range data {
 		event := &data[i].Content
-		meta, err := createEventBulkMeta(index, pipeline, event)
-		if err != nil {
-			logp.Err("Failed to encode event meta data: %s", err)
-			continue
-		}
+		meta := createEventBulkMeta(index, pipeline, event)
 		if err := body.Add(meta, event); err != nil {
 			logp.Err("Failed to encode event: %s", err)
 			continue
@@ -361,44 +329,48 @@ func bulkEncodePublishRequest(
 }
 
 func createEventBulkMeta(
-	indexSel outil.Selector,
+	index outil.Selector,
 	pipelineSel *outil.Selector,
 	event *beat.Event,
-) (interface{}, error) {
+) interface{} {
 	pipeline, err := getPipeline(event, pipelineSel)
 	if err != nil {
-		err := fmt.Errorf("failed to select pipeline: %v", err)
-		return nil, err
+		logp.Err("Failed to select pipeline: %v", err)
 	}
 
-	index, err := getIndex(event, indexSel)
-	if err != nil {
-		err := fmt.Errorf("failed to select event index: %v", err)
-		return nil, err
-	}
+	if pipeline == "" {
+		type bulkMetaIndex struct {
+			Index   string `json:"_index" struct:"_index"`
+			DocType string `json:"_type" struct:"_type"`
+		}
+		type bulkMeta struct {
+			Index bulkMetaIndex `json:"index"`
+		}
 
-	var id string
-	if m := event.Meta; m != nil {
-		if tmp := m["id"]; tmp != nil {
-			if s, ok := tmp.(string); ok {
-				id = s
-			} else {
-				logp.Err("Event ID '%v' is no string value", id)
-			}
+		return bulkMeta{
+			Index: bulkMetaIndex{
+				Index:   getIndex(event, index),
+				DocType: eventType,
+			},
 		}
 	}
 
-	meta := bulkEventMeta{
-		Index:    index,
-		DocType:  eventType,
-		Pipeline: pipeline,
-		ID:       id,
+	type bulkMetaIndex struct {
+		Index    string `json:"_index" struct:"_index"`
+		DocType  string `json:"_type" struct:"_type"`
+		Pipeline string `json:"pipeline" struct:"pipeline"`
+	}
+	type bulkMeta struct {
+		Index bulkMetaIndex `json:"index" struct:"index"`
 	}
 
-	if id != "" {
-		return bulkCreateAction{meta}, nil
+	return bulkMeta{
+		Index: bulkMetaIndex{
+			Index:    getIndex(event, index),
+			Pipeline: pipeline,
+			DocType:  eventType,
+		},
 	}
-	return bulkIndexAction{meta}, nil
 }
 
 func getPipeline(event *beat.Event, pipelineSel *outil.Selector) (string, error) {
@@ -420,19 +392,20 @@ func getPipeline(event *beat.Event, pipelineSel *outil.Selector) (string, error)
 // getIndex returns the full index name
 // Index is either defined in the config as part of the output
 // or can be overload by the event through setting index
-func getIndex(event *beat.Event, index outil.Selector) (string, error) {
+func getIndex(event *beat.Event, index outil.Selector) string {
 	if event.Meta != nil {
 		if str, exists := event.Meta["index"]; exists {
 			idx, ok := str.(string)
 			if ok {
 				ts := event.Timestamp.UTC()
 				return fmt.Sprintf("%s-%d.%02d.%02d",
-					idx, ts.Year(), ts.Month(), ts.Day()), nil
+					idx, ts.Year(), ts.Month(), ts.Day())
 			}
 		}
 	}
 
-	return index.Select(event)
+	str, _ := index.Select(event)
+	return str
 }
 
 // bulkCollectPublishFails checks per item errors returning all events
@@ -442,10 +415,10 @@ func getIndex(event *beat.Event, index outil.Selector) (string, error) {
 func bulkCollectPublishFails(
 	reader *jsonReader,
 	data []publisher.Event,
-) ([]publisher.Event, bulkResultStats) {
+) []publisher.Event {
 	if err := reader.expectDict(); err != nil {
 		logp.Err("Failed to parse bulk respose: expected JSON object")
-		return nil, bulkResultStats{}
+		return nil
 	}
 
 	// find 'items' field in response
@@ -453,12 +426,12 @@ func bulkCollectPublishFails(
 		kind, name, err := reader.nextFieldName()
 		if err != nil {
 			logp.Err("Failed to parse bulk response")
-			return nil, bulkResultStats{}
+			return nil
 		}
 
 		if kind == dictEnd {
 			logp.Err("Failed to parse bulk response: no 'items' field in response")
-			return nil, bulkResultStats{}
+			return nil
 		}
 
 		// found items array -> continue
@@ -472,43 +445,32 @@ func bulkCollectPublishFails(
 	// check items field is an array
 	if err := reader.expectArray(); err != nil {
 		logp.Err("Failed to parse bulk respose: expected items array")
-		return nil, bulkResultStats{}
+		return nil
 	}
 
 	count := len(data)
 	failed := data[:0]
-	stats := bulkResultStats{}
 	for i := 0; i < count; i++ {
 		status, msg, err := itemStatus(reader)
 		if err != nil {
-			return nil, bulkResultStats{}
+			return nil
 		}
 
 		if status < 300 {
-			stats.acked++
 			continue // ok value
-		}
-
-		if status == 409 {
-			// 409 is used to indicate an event with same ID already exists if
-			// `create` op_type is used.
-			stats.duplicates++
-			continue // ok
 		}
 
 		if status < 500 && status != 429 {
 			// hard failure, don't collect
-			logp.Warn("Cannot index event %#v (status=%v): %s", data[i], status, msg)
-			stats.nonIndexable++
+			logp.Warn("Can not index event (status=%v): %s", status, msg)
 			continue
 		}
 
 		debugf("Bulk item insert failed (i=%v, status=%v): %s", i, status, msg)
-		stats.fails++
 		failed = append(failed, data[i])
 	}
 
-	return failed, stats
+	return failed
 }
 
 func itemStatus(reader *jsonReader) (int, []byte, error) {

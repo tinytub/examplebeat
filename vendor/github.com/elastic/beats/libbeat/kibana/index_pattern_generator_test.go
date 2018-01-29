@@ -30,7 +30,7 @@ func TestNewGenerator(t *testing.T) {
 	assert.Equal(t, filepath.Join(beatDir, "fields.yml"), generator.fieldsYaml)
 
 	// creates file dir and sets name
-	expectedDir := filepath.Join(beatDir, "_meta/kibana/6/index-pattern")
+	expectedDir := filepath.Join(beatDir, "_meta/kibana/default/index-pattern")
 	assert.Equal(t, expectedDir, generator.targetDir)
 	_, err = os.Stat(generator.targetDir)
 	assert.NoError(t, err)
@@ -40,10 +40,9 @@ func TestNewGenerator(t *testing.T) {
 	generator, err = NewGenerator("beat-index", "mybeat.", beatDir, "7.0", *v)
 	assert.NoError(t, err)
 
-	expectedDir = filepath.Join(beatDir, "_meta/kibana/5/index-pattern")
+	expectedDir = filepath.Join(beatDir, "_meta/kibana/5.x/index-pattern")
 	assert.Equal(t, expectedDir, generator.targetDir)
 	_, err = os.Stat(generator.targetDir)
-
 	assert.NoError(t, err)
 
 	assert.Equal(t, "mybeat.json", generator.targetFilename)
@@ -90,7 +89,6 @@ func TestDumpToFile5x(t *testing.T) {
 	assert.NoError(t, err)
 
 	generator.targetDir = "./non-existing/something"
-
 	_, err = generator.Generate()
 	assert.Error(t, err)
 }
@@ -106,7 +104,6 @@ func TestDumpToFileDefault(t *testing.T) {
 	assert.NoError(t, err)
 
 	generator.targetDir = "./non-existing/something"
-
 	_, err = generator.Generate()
 	assert.Error(t, err)
 }
@@ -115,9 +112,9 @@ func TestGenerate(t *testing.T) {
 	beatDir := tmpPath()
 	defer teardown(beatDir)
 
-	v5, _ := common.NewVersion("5.0.0")
-	v6, _ := common.NewVersion("6.0.0")
-	versions := []*common.Version{v5, v6}
+	version5, _ := common.NewVersion("5.0.0")
+	version6, _ := common.NewVersion("6.0.0")
+	versions := []*common.Version{version5, version6}
 	for _, version := range versions {
 		generator, err := NewGenerator("beat-*", "b eat ?!", beatDir, "7.0.0-alpha1", *version)
 		assert.NoError(t, err)
@@ -127,10 +124,10 @@ func TestGenerate(t *testing.T) {
 	}
 
 	tests := []map[string]string{
-		{"existing": "beat-5.json", "created": "_meta/kibana/5/index-pattern/beat.json"},
-		{"existing": "beat-6.json", "created": "_meta/kibana/6/index-pattern/beat.json"},
+		{"existing": "beat-5x.json", "created": "_meta/kibana/5.x/index-pattern/beat.json"},
+		{"existing": "beat-default.json", "created": "_meta/kibana/default/index-pattern/beat.json"},
 	}
-	testGenerate(t, beatDir, tests, true)
+	testGenerate(t, beatDir, tests)
 }
 
 func TestGenerateExtensive(t *testing.T) {
@@ -152,13 +149,13 @@ func TestGenerateExtensive(t *testing.T) {
 	}
 
 	tests := []map[string]string{
-		{"existing": "metricbeat-5.json", "created": "_meta/kibana/5/index-pattern/metricbeat.json"},
-		{"existing": "metricbeat-6.json", "created": "_meta/kibana/6/index-pattern/metricbeat.json"},
+		{"existing": "metricbeat-5x.json", "created": "_meta/kibana/5.x/index-pattern/metricbeat.json"},
+		{"existing": "metricbeat-default.json", "created": "_meta/kibana/default/index-pattern/metricbeat.json"},
 	}
-	testGenerate(t, beatDir, tests, false)
+	testGenerate(t, beatDir, tests)
 }
 
-func testGenerate(t *testing.T, beatDir string, tests []map[string]string, sourceFilters bool) {
+func testGenerate(t *testing.T, beatDir string, tests []map[string]string) {
 	for _, test := range tests {
 		// compare default
 		existing, err := readJson(filepath.Join(beatDir, test["existing"]))
@@ -168,7 +165,7 @@ func testGenerate(t *testing.T, beatDir string, tests []map[string]string, sourc
 
 		var attrExisting, attrCreated common.MapStr
 
-		if strings.Contains(test["existing"], "6") {
+		if strings.Contains(test["existing"], "default") {
 			assert.Equal(t, existing["version"], created["version"])
 
 			objExisting := existing["objects"].([]interface{})[0].(map[string]interface{})
@@ -201,31 +198,16 @@ func testGenerate(t *testing.T, beatDir string, tests []map[string]string, sourc
 		assert.NoError(t, err)
 		assert.Equal(t, len(fieldsExisting), len(fieldsCreated))
 		for _, e := range fieldsExisting {
-			idx := find(fieldsCreated, "name", e["name"].(string))
+			idx := find(fieldsCreated, e["name"].(string))
 			assert.NotEqual(t, -1, idx)
 			assert.Equal(t, e, fieldsCreated[idx])
-		}
-
-		// check sourceFilters
-		if sourceFilters {
-			var sfExisting, sfCreated []map[string]interface{}
-			err = json.Unmarshal([]byte(attrExisting["sourceFilters"].(string)), &sfExisting)
-			assert.NoError(t, err)
-			err = json.Unmarshal([]byte(attrCreated["sourceFilters"].(string)), &sfCreated)
-			assert.NoError(t, err)
-			assert.Equal(t, len(sfExisting), len(sfCreated))
-			for _, e := range sfExisting {
-				idx := find(sfCreated, "value", e["value"].(string))
-				assert.NotEqual(t, -1, idx)
-				assert.Equal(t, e, sfCreated[idx])
-			}
 		}
 	}
 }
 
-func find(a []map[string]interface{}, key, val string) int {
+func find(a []map[string]interface{}, k string) int {
 	for idx, e := range a {
-		if e[key].(string) == val {
+		if e["name"].(string) == k {
 			return idx
 		}
 	}

@@ -8,9 +8,9 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/elastic/beats/libbeat/common"
-	"github.com/elastic/beats/libbeat/metric/system/cpu"
 	"github.com/elastic/beats/metricbeat/mb"
 	"github.com/elastic/beats/metricbeat/mb/parse"
+	"github.com/elastic/beats/metricbeat/module/system"
 )
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 type MetricSet struct {
 	mb.BaseMetricSet
 	config Config
-	cores  *cpu.CoresMonitor
+	cores  *system.CPUCoresMonitor
 }
 
 // New returns a new core MetricSet.
@@ -40,7 +40,7 @@ func New(base mb.BaseMetricSet) (mb.MetricSet, error) {
 	return &MetricSet{
 		BaseMetricSet: base,
 		config:        config,
-		cores:         new(cpu.CoresMonitor),
+		cores:         new(system.CPUCoresMonitor),
 	}, nil
 }
 

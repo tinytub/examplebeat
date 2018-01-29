@@ -1,9 +1,13 @@
 package logstash
 
 import (
+	"testing"
+
 	"github.com/elastic/beats/libbeat/logp"
 )
 
 func enableLogging(selectors []string) {
-	logp.TestingSetup(logp.WithSelectors(selectors...))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, selectors)
+	}
 }

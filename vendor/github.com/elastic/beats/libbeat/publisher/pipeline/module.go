@@ -58,7 +58,6 @@ func Load(
 		},
 	}
 
-	fmt.Println(config.Queue)
 	queueBuilder, err := createQueueBuilder(config.Queue)
 	if err != nil {
 		return nil, err

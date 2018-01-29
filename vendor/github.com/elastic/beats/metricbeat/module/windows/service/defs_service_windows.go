@@ -26,7 +26,7 @@ const (
 
 type ServiceErrorControl uint32
 
-// Service Error Controls
+// Servcie Error Controls
 const (
 	SERVICE_ERROR_CRITICAL ServiceErrno = C.SERVICE_ERROR_CRITICAL
 	SERVICE_ERROR_IGNORE   ServiceErrno = C.SERVICE_ERROR_IGNORE

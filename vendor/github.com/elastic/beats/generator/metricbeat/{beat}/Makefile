@@ -14,8 +14,8 @@ NOTICE_FILE=NOTICE
 # Initial beat setup
 .PHONY: setup
 setup: copy-vendor
-	$(MAKE) create-metricset
-	$(MAKE) collect
+	make create-metricset
+	make collect
 
 # Copy beats into vendor directory
 .PHONY: copy-vendor

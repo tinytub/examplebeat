@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"flag"
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -17,7 +16,6 @@ func genRunCmd(name, idxPrefix, version string, beatCreator beat.Creator, runFla
 		Use:   "run",
 		Short: "Run " + name,
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("zhaopeng-iri test %s,%s,%s,%s", name, idxPrefix, version, beatCreator)
 			err := instance.Run(name, idxPrefix, version, beatCreator)
 			if err != nil {
 				os.Exit(1)

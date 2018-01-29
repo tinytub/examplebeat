@@ -3,7 +3,6 @@ package dialchain
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"time"
 
 	"github.com/elastic/beats/heartbeat/look"
@@ -14,8 +13,8 @@ import (
 
 // TCPDialer creates a new NetDialer with constant event fields and default
 // connection timeout.
-// The fields parameter holds additional constants to be added to the final
-// event structure.
+// The fields parameter holds additional constants to be added to the final event
+// structure.
 //
 // The dialer will update the active events with:
 //
@@ -31,8 +30,8 @@ func TCPDialer(to time.Duration) NetDialer {
 
 // UDPDialer creates a new NetDialer with constant event fields and default
 // connection timeout.
-// The fields parameter holds additional constants to be added to the final
-// event structure.
+// The fields parameter holds additional constants to be added to the final event
+// structure.
 //
 // The dialer will update the active events with:
 //
@@ -64,16 +63,6 @@ func netDialer(timeout time.Duration) NetDialer {
 			if err != nil {
 				return nil, err
 			}
-
-			portNum, err := strconv.Atoi(port)
-			if err != nil || portNum < 0 || portNum > (1<<16) {
-				return nil, fmt.Errorf("invalid port number '%v' used", port)
-			}
-			event.DeepUpdate(common.MapStr{
-				namespace: common.MapStr{
-					"port": uint16(portNum),
-				},
-			})
 
 			addresses, err := net.LookupHost(host)
 			if err != nil {

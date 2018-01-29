@@ -3,14 +3,10 @@ package gotype
 import "strings"
 
 type tagOptions struct {
-	squash    bool
-	omitEmpty bool
+	squash bool
 }
 
-var defaultTagOptions = tagOptions{
-	squash:    false,
-	omitEmpty: false,
-}
+var defaultTagOptions = tagOptions{}
 
 func parseTags(tag string) (string, tagOptions) {
 	s := strings.Split(tag, ",")
@@ -22,8 +18,6 @@ func parseTags(tag string) (string, tagOptions) {
 		switch strings.TrimSpace(opt) {
 		case "squash", "inline":
 			opts.squash = true
-		case "omitempty":
-			opts.omitEmpty = true
 		}
 	}
 	return strings.TrimSpace(s[0]), opts

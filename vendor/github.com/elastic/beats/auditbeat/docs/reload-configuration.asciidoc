@@ -36,12 +36,14 @@ definitions. For example:
 ------------------------------------------------------------------------------
 auditbeat.modules:
 
-- module: file_integrity
-  paths:
-  - /www/wordpress
-  - /www/wordpress/wp-admin
-  - /www/wordpress/wp-content
-  - /www/wordpress/wp-includes
+- module: audit
+  metricsets: [file]
+  file.paths:
+    wordpress:
+    - /www/wordpress
+    - /www/wordpress/wp-admin
+    - /www/wordpress/wp-content
+    - /www/wordpress/wp-includes
 ------------------------------------------------------------------------------
 
 NOTE: On systems with POSIX file permissions, all Beats configuration files are

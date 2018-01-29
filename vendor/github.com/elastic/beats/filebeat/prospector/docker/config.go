@@ -2,9 +2,8 @@ package docker
 
 var defaultConfig = config{
 	Containers: containers{
-		IDs:    []string{},
-		Path:   "/var/lib/docker/containers",
-		Stream: "all",
+		IDs:  []string{},
+		Path: "/var/lib/docker/containers",
 	},
 }
 
@@ -15,7 +14,4 @@ type config struct {
 type containers struct {
 	IDs  []string `config:"ids"`
 	Path string   `config:"path"`
-
-	// Stream can be all,stdout or stderr
-	Stream string `config:"stream"`
 }

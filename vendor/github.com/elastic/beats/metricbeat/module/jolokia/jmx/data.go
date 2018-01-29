@@ -81,22 +81,9 @@ func parseResponseEntry(
 
 	key, exists := mapping[metricName]
 	if !exists {
-		return errors.Errorf("metric key '%v' not found in response", metricName)
+		return errors.Errorf("metric key '%v' not found in response", key)
 	}
 
-	var err error
-
-	// In case the attributeValue is a map the keys are dedotted
-	c, ok := attibuteValue.(map[string]interface{})
-	if ok {
-		newData := map[string]interface{}{}
-		for k, v := range c {
-			newData[common.DeDot(k)] = v
-		}
-		_, err = event.Put(key, newData)
-	} else {
-		_, err = event.Put(key, attibuteValue)
-	}
-
+	_, err := event.Put(key, attibuteValue)
 	return err
 }

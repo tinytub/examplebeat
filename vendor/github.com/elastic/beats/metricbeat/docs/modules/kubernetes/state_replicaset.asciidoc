@@ -5,6 +5,8 @@ This file is generated! See scripts/docs_collector.py
 [[metricbeat-metricset-kubernetes-state_replicaset]]
 === Kubernetes state_replicaset metricset
 
+beta[]
+
 include::../../../module/kubernetes/state_replicaset/_meta/docs.asciidoc[]
 
 

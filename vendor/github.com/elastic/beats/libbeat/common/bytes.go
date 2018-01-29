@@ -2,7 +2,6 @@ package common
 
 import (
 	"bytes"
-	"crypto/rand"
 	"errors"
 	"fmt"
 )
@@ -46,16 +45,4 @@ func ReadString(s []byte) (string, error) {
 	}
 	res := string(s[:i])
 	return res, nil
-}
-
-// RandomBytes return a slice of random bytes of the defined length
-func RandomBytes(length int) ([]byte, error) {
-	r := make([]byte, length)
-	_, err := rand.Read(r)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return r, nil
 }

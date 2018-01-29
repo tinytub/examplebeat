@@ -5,6 +5,8 @@ This file is generated! See scripts/docs_collector.py
 [[metricbeat-metricset-docker-network]]
 === Docker network metricset
 
+beta[]
+
 include::../../../module/docker/network/_meta/docs.asciidoc[]
 
 

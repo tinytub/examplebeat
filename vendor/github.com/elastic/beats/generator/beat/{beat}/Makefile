@@ -15,7 +15,7 @@ NOTICE_FILE=NOTICE
 # Initial beat setup
 .PHONY: setup
 setup: copy-vendor
-	$(MAKE) update
+	make update
 
 # Copy beats into vendor directory
 .PHONY: copy-vendor

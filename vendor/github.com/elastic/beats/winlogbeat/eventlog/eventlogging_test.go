@@ -77,10 +77,10 @@ var oneTimeLogpInit sync.Once
 func configureLogp() {
 	oneTimeLogpInit.Do(func() {
 		if testing.Verbose() {
-			logp.DevelopmentSetup(logp.WithSelectors("eventlog"))
+			logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"eventlog"})
 			logp.Info("DEBUG enabled for eventlog.")
 		} else {
-			logp.DevelopmentSetup(logp.WithLevel(logp.WarnLevel))
+			logp.LogInit(logp.LOG_WARNING, "", false, true, []string{})
 		}
 
 		// Clear the event log before starting.

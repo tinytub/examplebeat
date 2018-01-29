@@ -1,115 +1,53 @@
 package beater
 
 import (
-	"fmt"
 	"sync"
+	"time"
+
+	"github.com/joeshaw/multierror"
+	"github.com/pkg/errors"
 
 	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/cfgfile"
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/common/cfgwarn"
 	"github.com/elastic/beats/libbeat/logp"
-	"github.com/joeshaw/multierror"
-	"github.com/pkg/errors"
-	/*
-		"github.com/tinytub/examplebeat/mb"
-		"github.com/tinytub/examplebeat/mb/module"
-	*/
 	"github.com/elastic/beats/metricbeat/mb"
 	"github.com/elastic/beats/metricbeat/mb/module"
+	// Add metricbeat specific processors
+	//	_ "github.com/elastic/beats/metricbeat/processor/add_kubernetes_metadata"
 )
-
-/*
-type Examplebeat struct {
-	done   chan struct{}
-	config config.Config
-	client beat.Client
-}
-*/
 
 // Metricbeat implements the Beater interface for metricbeat.
 type Metricbeat struct {
 	done    chan struct{}  // Channel used to initiate shutdown.
 	modules []staticModule // Active list of modules.
 	config  Config
-	// Options
-	moduleOptions []module.Option
+	//	autodiscover *autodiscover.Autodiscover
 }
+
 type staticModule struct {
 	connector *module.Connector
 	module    *module.Wrapper
 }
 
-// Option specifies some optional arguments used for configuring the behavior
-// of the Metricbeat framework.
-type Option func(mb *Metricbeat)
-
-// WithModuleOptions sets the given module options on the Metricbeat framework
-// and these options will be used anytime a new module is instantiated.
-func WithModuleOptions(options ...module.Option) Option {
-	return func(mb *Metricbeat) {
-		mb.moduleOptions = append(mb.moduleOptions, options...)
-	}
-}
-
-// Creator returns a beat.Creator for instantiating a new instance of the
-// Metricbeat framework with the given options.
-func Creator(options ...Option) beat.Creator {
-	return func(b *beat.Beat, c *common.Config) (beat.Beater, error) {
-		fmt.Println("beat:", b)
-		fmt.Println("config:", c)
-		return newMetricbeat(b, c, options...)
-	}
-}
-
-// DefaultCreator returns a beat.Creator for instantiating a new instance of
-// Metricbeat framework with the traditional Metricbeat module option of
-// module.WithMetricSetInfo.
-//
-// This is equivalent to calling
-//
-//     beater.Creator(
-//         beater.WithModuleOptions(
-//             module.WithMetricSetInfo(),
-//         ),
-//     )
-func DefaultCreator() beat.Creator {
-	return Creator(
-		WithModuleOptions(
-			module.WithMetricSetInfo(),
-		),
-	)
-}
-
-// newMetricbeat creates and returns a new Metricbeat instance.
-func newMetricbeat(b *beat.Beat, c *common.Config, options ...Option) (*Metricbeat, error) {
+// New creates and returns a new Metricbeat instance.
+func New(b *beat.Beat, rawConfig *common.Config) (beat.Beater, error) {
 	// List all registered modules and metricsets.
-	//logp.Debug("modules", "%s", mb.Registry.String())
-	logp.Info("modules", "%s", mb.Registry.String())
+	logp.Debug("modules", "%s", mb.Registry.String())
 
 	config := defaultConfig
-	if err := c.Unpack(&config); err != nil {
+	if err := rawConfig.Unpack(&config); err != nil {
 		return nil, errors.Wrap(err, "error reading configuration file")
 	}
 
-	//dynamicCfgEnabled := config.ConfigModules.Enabled() || config.Autodiscover != nil
 	dynamicCfgEnabled := config.ConfigModules.Enabled()
 	if !dynamicCfgEnabled && len(config.Modules) == 0 {
 		return nil, mb.ErrEmptyConfig
 	}
 
-	metricbeat := &Metricbeat{
-		done:   make(chan struct{}),
-		config: config,
-	}
-	for _, applyOption := range options {
-		applyOption(metricbeat)
-	}
-
-	moduleOptions := append(
-		[]module.Option{module.WithMaxStartDelay(config.MaxStartDelay)},
-		metricbeat.moduleOptions...)
 	var errs multierror.Errors
+	var modules []staticModule
 	for _, moduleCfg := range config.Modules {
 		if !moduleCfg.Enabled() {
 			continue
@@ -129,7 +67,7 @@ func newMetricbeat(b *beat.Beat, c *common.Config, options ...Option) (*Metricbe
 			failed = true
 		}
 
-		module, err := module.NewWrapper(moduleCfg, mb.Registry, moduleOptions...)
+		module, err := module.NewWrapper(config.MaxStartDelay, moduleCfg, mb.Registry)
 		if err != nil {
 			errs = append(errs, err)
 			failed = true
@@ -139,7 +77,7 @@ func newMetricbeat(b *beat.Beat, c *common.Config, options ...Option) (*Metricbe
 			continue
 		}
 
-		metricbeat.modules = append(metricbeat.modules, staticModule{
+		modules = append(modules, staticModule{
 			connector: connector,
 			module:    module,
 		})
@@ -148,11 +86,30 @@ func newMetricbeat(b *beat.Beat, c *common.Config, options ...Option) (*Metricbe
 	if err := errs.Err(); err != nil {
 		return nil, err
 	}
-	if len(metricbeat.modules) == 0 && !dynamicCfgEnabled {
+	if len(modules) == 0 && !dynamicCfgEnabled {
 		return nil, mb.ErrAllModulesDisabled
 	}
 
-	return metricbeat, nil
+	/*
+		var adiscover *autodiscover.Autodiscover
+		if config.Autodiscover != nil {
+			var err error
+			factory := module.NewFactory(config.MaxStartDelay, b.Publisher)
+			adapter := NewAutodiscoverAdapter(factory)
+			adiscover, err = autodiscover.NewAutodiscover("metricbeat", adapter, config.Autodiscover)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+	*/
+	mb := &Metricbeat{
+		done:    make(chan struct{}),
+		modules: modules,
+		config:  config,
+		//autodiscover: adiscover,
+	}
+	return mb, nil
 }
 
 // Run starts the workers for Metricbeat and blocks until Stop is called
@@ -164,7 +121,6 @@ func (bt *Metricbeat) Run(b *beat.Beat) error {
 	var wg sync.WaitGroup
 
 	for _, m := range bt.modules {
-		fmt.Println("zhaopeng-iri static modules:", m.module.Name)
 		client, err := m.connector.Connect()
 		if err != nil {
 			return err
@@ -182,7 +138,7 @@ func (bt *Metricbeat) Run(b *beat.Beat) error {
 
 	if bt.config.ConfigModules.Enabled() {
 		moduleReloader := cfgfile.NewReloader(bt.config.ConfigModules)
-		factory := module.NewFactory(b.Publisher, bt.moduleOptions...)
+		factory := module.NewFactory(bt.config.MaxStartDelay, b.Publisher)
 
 		if err := moduleReloader.Check(factory); err != nil {
 			return err
@@ -223,7 +179,7 @@ func (bt *Metricbeat) Stop() {
 }
 
 // Modules return a list of all configured modules, including anyone present
-// under dynamic config settings.
+// under dynamic config settings
 func (bt *Metricbeat) Modules() ([]*module.Wrapper, error) {
 	var modules []*module.Wrapper
 	for _, m := range bt.modules {
@@ -246,7 +202,7 @@ func (bt *Metricbeat) Modules() ([]*module.Wrapper, error) {
 				return nil, errors.Wrap(err, "error loading config files")
 			}
 			for _, conf := range confs {
-				m, err := module.NewWrapper(conf, mb.Registry, bt.moduleOptions...)
+				m, err := module.NewWrapper(time.Duration(0), conf, mb.Registry)
 				if err != nil {
 					return nil, errors.Wrap(err, "module initialization error")
 				}
@@ -257,56 +213,3 @@ func (bt *Metricbeat) Modules() ([]*module.Wrapper, error) {
 
 	return modules, nil
 }
-
-/*
-// Creates beater
-func New(b *beat.Beat, cfg *common.Config) (beat.Beater, error) {
-	config := config.DefaultConfig
-	if err := cfg.Unpack(&config); err != nil {
-		return nil, fmt.Errorf("Error reading config file: %v", err)
-	}
-
-	bt := &Examplebeat{
-		done:   make(chan struct{}),
-		config: config,
-	}
-	return bt, nil
-}
-
-func (bt *Examplebeat) Run(b *beat.Beat) error {
-	logp.Info("examplebeat is running! Hit CTRL-C to stop it.")
-
-	var err error
-	bt.client, err = b.Publisher.Connect()
-	if err != nil {
-		return err
-	}
-
-	ticker := time.NewTicker(bt.config.Period)
-	counter := 1
-	for {
-		select {
-		case <-bt.done:
-			return nil
-		case <-ticker.C:
-		}
-
-		event := beat.Event{
-			Timestamp: time.Now(),
-			Fields: common.MapStr{
-				"type":    b.Info.Name,
-				"counter": counter,
-			},
-		}
-		bt.client.Publish(event)
-		logp.Info("Event sent")
-		counter++
-	}
-}
-
-func (bt *Examplebeat) Stop() {
-	bt.client.Close()
-	close(bt.done)
-}
-
-*/

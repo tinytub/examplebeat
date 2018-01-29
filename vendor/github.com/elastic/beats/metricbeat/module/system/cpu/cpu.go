@@ -8,9 +8,9 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/elastic/beats/libbeat/common"
-	"github.com/elastic/beats/libbeat/metric/system/cpu"
 	"github.com/elastic/beats/metricbeat/mb"
 	"github.com/elastic/beats/metricbeat/mb/parse"
+	"github.com/elastic/beats/metricbeat/module/system"
 )
 
 func init() {
@@ -23,7 +23,7 @@ func init() {
 type MetricSet struct {
 	mb.BaseMetricSet
 	config Config
-	cpu    *cpu.Monitor
+	cpu    *system.CPUMonitor
 }
 
 // New is a mb.MetricSetFactory that returns a cpu.MetricSet.
@@ -40,7 +40,7 @@ func New(base mb.BaseMetricSet) (mb.MetricSet, error) {
 	return &MetricSet{
 		BaseMetricSet: base,
 		config:        config,
-		cpu:           new(cpu.Monitor),
+		cpu:           new(system.CPUMonitor),
 	}, nil
 }
 
@@ -51,7 +51,7 @@ func (m *MetricSet) Fetch() (common.MapStr, error) {
 		return nil, errors.Wrap(err, "failed to fetch CPU times")
 	}
 
-	event := common.MapStr{"cores": cpu.NumCores}
+	event := common.MapStr{"cores": system.NumCPU}
 
 	for _, metric := range m.config.Metrics {
 		switch strings.ToLower(metric) {

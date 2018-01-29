@@ -1,1 +1,5 @@
-NOTE: Use `sudo` to run these commands if the config file is owned by root.
+[TIP]
+=========================
+Use `sudo` to run this command if the config file is owned by `root`.
+
+=========================

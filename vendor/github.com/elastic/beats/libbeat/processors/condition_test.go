@@ -23,8 +23,10 @@ func (c *countFilter) Run(e *beat.Event) (*beat.Event, error) {
 
 func (c *countFilter) String() string { return "count" }
 
-func TestCreateConditions(t *testing.T) {
-	logp.TestingSetup()
+func TestConditions(t *testing.T) {
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	configs := []ConditionConfig{
 		{
@@ -71,65 +73,88 @@ func GetConditions(t *testing.T, configs []ConditionConfig) []Condition {
 	return conds
 }
 
-func TestCondition(t *testing.T) {
-	logp.TestingSetup()
+func TestEqualsCondition(t *testing.T) {
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
-	tests := []struct {
-		config ConditionConfig
-		result bool
-	}{
+	configs := []ConditionConfig{
 		{
-			config: ConditionConfig{
-				Equals: &ConditionFields{fields: map[string]interface{}{
-					"type": "process",
-				}},
-			},
-			result: true,
+			Equals: &ConditionFields{fields: map[string]interface{}{
+				"type": "process",
+			}},
 		},
+
 		{
-			config: ConditionConfig{
-				Equals: &ConditionFields{fields: map[string]interface{}{
-					"type":     "process",
-					"proc.pid": 305,
-				}},
-			},
-			result: true,
+			Equals: &ConditionFields{fields: map[string]interface{}{
+				"type":     "process",
+				"proc.pid": 305,
+			}},
 		},
+
 		{
-			config: ConditionConfig{
-				Range: &ConditionFields{fields: map[string]interface{}{
-					"proc.cpu.total_p.gt": 0.5,
-				}},
-			},
-			result: false,
-		},
-		{
-			config: ConditionConfig{
-				Contains: &ConditionFields{fields: map[string]interface{}{
-					"proc.name":     "sec",
-					"proc.username": "monica",
-				}},
-			},
-			result: true,
-		},
-		{
-			config: ConditionConfig{
-				Contains: &ConditionFields{fields: map[string]interface{}{
-					"type":      "process",
-					"proc.name": "secddd",
-				}},
-			},
-			result: false,
-		},
-		{
-			config: ConditionConfig{
-				Contains: &ConditionFields{fields: map[string]interface{}{
-					"proc.keywords": "bar",
-				}},
-			},
-			result: true,
+			Range: &ConditionFields{fields: map[string]interface{}{
+				"proc.cpu.total_p.gt": 0.5,
+			}},
 		},
 	}
+
+	conds := GetConditions(t, configs)
+
+	event := &beat.Event{
+		Timestamp: time.Now(),
+		Fields: common.MapStr{
+			"proc": common.MapStr{
+				"cmdline": "/usr/libexec/secd",
+				"cpu": common.MapStr{
+					"start_time": "Apr10",
+					"system":     1988,
+					"total":      6029,
+					"total_p":    0.08,
+					"user":       4041,
+				},
+				"name":     "secd",
+				"pid":      305,
+				"ppid":     1,
+				"state":    "running",
+				"username": "monica",
+			},
+			"type": "process",
+		}}
+
+	assert.True(t, conds[0].Check(event))
+	assert.True(t, conds[1].Check(event))
+	assert.False(t, conds[2].Check(event))
+}
+
+func TestContainsCondition(t *testing.T) {
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
+
+	configs := []ConditionConfig{
+		{
+			Contains: &ConditionFields{fields: map[string]interface{}{
+				"proc.name":     "sec",
+				"proc.username": "monica",
+			}},
+		},
+
+		{
+			Contains: &ConditionFields{fields: map[string]interface{}{
+				"type":      "process",
+				"proc.name": "secddd",
+			}},
+		},
+
+		{
+			Contains: &ConditionFields{fields: map[string]interface{}{
+				"proc.keywords": "bar",
+			}},
+		},
+	}
+
+	conds := GetConditions(t, configs)
 
 	event := &beat.Event{
 		Timestamp: time.Now(),
@@ -154,15 +179,15 @@ func TestCondition(t *testing.T) {
 		},
 	}
 
-	for _, test := range tests {
-		cond, err := NewCondition(&test.config)
-		assert.Nil(t, err)
-		assert.Equal(t, test.result, cond.Check(event))
-	}
+	assert.True(t, conds[0].Check(event))
+	assert.False(t, conds[1].Check(event))
+	assert.True(t, conds[2].Check(event))
 }
 
 func TestRegexpCondition(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	configs := []ConditionConfig{
 		{
@@ -218,7 +243,9 @@ func TestRegexpCondition(t *testing.T) {
 }
 
 func TestRangeCondition(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	configs := []ConditionConfig{
 		{
@@ -308,8 +335,9 @@ func TestRangeCondition(t *testing.T) {
 }
 
 func TestORCondition(t *testing.T) {
-	logp.TestingSetup()
-
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 	configs := []ConditionConfig{
 		{
 			OR: []ConditionConfig{
@@ -366,7 +394,9 @@ func TestORCondition(t *testing.T) {
 }
 
 func TestANDCondition(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 	configs := []ConditionConfig{
 		{
 			AND: []ConditionConfig{
@@ -422,8 +452,9 @@ func TestANDCondition(t *testing.T) {
 }
 
 func TestNOTCondition(t *testing.T) {
-	logp.TestingSetup()
-
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 	configs := []ConditionConfig{
 		{
 			NOT: &ConditionConfig{
@@ -472,7 +503,9 @@ func TestNOTCondition(t *testing.T) {
 }
 
 func TestCombinedCondition(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 	configs := []ConditionConfig{
 		{
 			OR: []ConditionConfig{

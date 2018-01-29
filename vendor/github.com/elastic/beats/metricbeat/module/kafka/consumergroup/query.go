@@ -1,6 +1,8 @@
 package consumergroup
 
 import (
+	"sync"
+
 	"github.com/Shopify/sarama"
 
 	"github.com/elastic/beats/libbeat/common"
@@ -11,7 +13,7 @@ import (
 type client interface {
 	ListGroups() ([]string, error)
 	DescribeGroups(group []string) (map[string]kafka.GroupDescription, error)
-	FetchGroupOffsets(group string, partitions map[string][]int32) (*sarama.OffsetFetchResponse, error)
+	FetchGroupOffsets(group string) (*sarama.OffsetFetchResponse, error)
 }
 
 func fetchGroupInfo(
@@ -20,10 +22,9 @@ func fetchGroupInfo(
 	groupsFilter, topicsFilter func(string) bool,
 ) error {
 	type result struct {
-		err    error
-		group  string
-		assign map[string]map[int32]groupAssignment
-		off    *sarama.OffsetFetchResponse
+		err   error
+		group string
+		off   *sarama.OffsetFetchResponse
 	}
 
 	groups, err := listGroups(b, groupsFilter)
@@ -37,64 +38,51 @@ func fetchGroupInfo(
 
 	debugf("known consumer groups: ", groups)
 
-	assignments, err := fetchGroupAssignments(b, groups)
-	if err != nil {
-		logp.Err("failed to fetch kafka group assignments: %v", err)
-		return err
-	}
-	if len(assignments) == 0 {
-		return nil
-	}
+	wg := sync.WaitGroup{}
+	results := make(chan result, len(groups))
+	for _, group := range groups {
+		group := group
 
-	results := make(chan result)
-	waiting := 0
-	for group, topics := range assignments {
-		// generate the map topic to partitions
-		queryTopics := make(map[string][]int32)
-		for topic, partitions := range topics {
-			if topicsFilter != nil && !topicsFilter(topic) {
-				continue
-			}
-
-			// copy partition ids
-			count := len(partitions)
-			if count == 0 {
-				continue
-			}
-
-			ids, i := make([]int32, count), 0
-			for partition := range partitions {
-				ids[i], i = partition, i+1
-			}
-			queryTopics[topic] = ids
-		}
-
-		if len(queryTopics) == 0 {
-			continue
-		}
-
-		// fetch group offset
-		waiting++
-		go func(group string, partitions map[string][]int32, assign map[string]map[int32]groupAssignment) {
-			resp, err := fetchGroupOffset(b, group, partitions)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			resp, err := fetchGroupOffset(b, group, topicsFilter)
 			if err != nil {
 				logp.Err("failed to fetch '%v' group offset: %v", group, err)
 			}
-			results <- result{err, group, assign, resp}
-		}(group, queryTopics, topics)
+			results <- result{err, group, resp}
+		}()
 	}
 
-	for waiting > 0 {
-		ret := <-results
-		waiting--
-		if ret.err != nil && err == nil {
-			err = ret.err
-		}
-		if err != nil {
-			continue
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	assignments, err := fetchGroupAssignments(b, groups)
+	if err != nil {
+		// wait for workers to stop and drop results
+		for range results {
 		}
 
+		return err
+	}
+
+	for ret := range results {
+		if err := ret.err; err != nil {
+			// wait for workers to stop and drop results
+			for range results {
+			}
+			return err
+		}
+
+		asgnGroup := assignments[ret.group]
 		for topic, partitions := range ret.off.Blocks {
+			var asgnTopic map[int32]groupAssignment
+			if asgnGroup != nil {
+				asgnTopic = asgnGroup[topic]
+			}
+
 			for partition, info := range partitions {
 				event := common.MapStr{
 					"id":        ret.group,
@@ -107,7 +95,7 @@ func fetchGroupInfo(
 					},
 				}
 
-				if asgnTopic, ok := ret.assign[topic]; ok {
+				if asgnTopic != nil {
 					if assignment, found := asgnTopic[partition]; found {
 						event["client"] = common.MapStr{
 							"id":        assignment.clientID,
@@ -120,12 +108,9 @@ func fetchGroupInfo(
 				emit(event)
 			}
 		}
-
 	}
 
-	close(results)
-
-	return err
+	return nil
 }
 
 func listGroups(b client, filter func(string) bool) ([]string, error) {
@@ -205,11 +190,21 @@ groupLoop:
 func fetchGroupOffset(
 	b client,
 	group string,
-	partitions map[string][]int32,
+	topics func(string) bool,
 ) (*sarama.OffsetFetchResponse, error) {
-	resp, err := b.FetchGroupOffsets(group, partitions)
+	resp, err := b.FetchGroupOffsets(group)
 	if err != nil {
 		return nil, err
+	}
+
+	if topics == nil {
+		return resp, err
+	}
+
+	for topic := range resp.Blocks {
+		if !topics(topic) {
+			delete(resp.Blocks, topic)
+		}
 	}
 
 	return resp, nil

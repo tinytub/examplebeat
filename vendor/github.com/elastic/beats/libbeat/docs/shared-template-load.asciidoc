@@ -115,30 +115,24 @@ configured credentials as described in <<{beatname_lc}-configuration>>.
 If the host running {beatname_uc} does not have direct connectivity to
 Elasticsearch, see <<load-template-manually-alternate>>.
 
-To load the template, use the appropriate command for your system.
+To load the template: 
 
 ifdef::allplatforms[]
 
-ifeval::["{requires-sudo}"=="yes"]
-
-include::./shared-note-sudo.asciidoc[]
-
-endif::[]
-
-*deb and rpm:*
-
-["source","sh",subs="attributes"]
-----
-{beatname_lc} setup --template -E output.logstash.enabled=false -E 'output.elasticsearch.hosts=["localhost:9200"]'
-----
-
-*mac:*
+*deb, rpm, and mac:*
 
 ["source","sh",subs="attributes"]
 ----
 ./{beatname_lc} setup --template -E output.logstash.enabled=false -E 'output.elasticsearch.hosts=["localhost:9200"]'
 ----
 
+
+ifeval::["{requires-sudo}"=="yes"]
+
+If you changed ownership of the config file to root, you'll need preface this
+command with `sudo`.
+
+endif::[]
 
 ifeval::["{beatname_lc}"!="auditbeat"]
 
@@ -206,14 +200,7 @@ machine that does have connectivity, and then install the template manually.
 . Export the index template:
 +
 ifdef::allplatforms[]
-*deb and rpm:*
-+
-["source","sh",subs="attributes"]
-----
-{beatname_lc} export template > {beatname_lc}.template.json
-----
-+
-*mac:*
+*deb, rpm, and mac:*
 +
 ["source","sh",subs="attributes"]
 ----

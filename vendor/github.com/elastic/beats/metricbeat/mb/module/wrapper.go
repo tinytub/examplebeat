@@ -34,11 +34,8 @@ var (
 // Use NewWrapper or NewWrappers to construct new Wrappers.
 type Wrapper struct {
 	mb.Module
-	metricSets []*metricSetWrapper // List of pointers to its associated MetricSets.
-
-	// Options
-	maxStartDelay  time.Duration
-	eventModifiers []mb.EventModifier
+	metricSets    []*metricSetWrapper // List of pointers to its associated MetricSets.
+	maxStartDelay time.Duration
 }
 
 // metricSetWrapper contains the MetricSet and the private data associated with
@@ -60,18 +57,16 @@ type stats struct {
 
 // NewWrapper create a new Module and its associated MetricSets based
 // on the given configuration.
-func NewWrapper(config *common.Config, r *mb.Register, options ...Option) (*Wrapper, error) {
+func NewWrapper(maxStartDelay time.Duration, config *common.Config, r *mb.Register) (*Wrapper, error) {
 	module, metricsets, err := mb.NewModule(config, r)
 	if err != nil {
 		return nil, err
 	}
 
 	wrapper := &Wrapper{
-		Module:     module,
-		metricSets: make([]*metricSetWrapper, len(metricsets)),
-	}
-	for _, applyOption := range options {
-		applyOption(wrapper)
+		Module:        module,
+		maxStartDelay: maxStartDelay,
+		metricSets:    make([]*metricSetWrapper, len(metricsets)),
 	}
 
 	for i, ms := range metricsets {
@@ -163,11 +158,8 @@ func (msw *metricSetWrapper) run(done <-chan struct{}, out chan<- beat.Event) {
 
 	switch ms := msw.MetricSet.(type) {
 	case mb.PushMetricSet:
-		ms.Run(reporter.V1())
-	case mb.PushMetricSetV2:
-		ms.Run(reporter.V2())
-	case mb.EventFetcher, mb.EventsFetcher,
-		mb.ReportingMetricSet, mb.ReportingMetricSetV2:
+		ms.Run(reporter)
+	case mb.EventFetcher, mb.EventsFetcher, mb.ReportingMetricSet:
 		msw.startPeriodicFetching(reporter)
 	default:
 		// Earlier startup stages prevent this from happening.
@@ -188,7 +180,7 @@ func (msw *metricSetWrapper) startPeriodicFetching(reporter reporter) {
 	defer t.Stop()
 	for {
 		select {
-		case <-reporter.V2().Done():
+		case <-reporter.Done():
 			return
 		case <-t.C:
 			msw.fetch(reporter)
@@ -206,11 +198,7 @@ func (msw *metricSetWrapper) fetch(reporter reporter) {
 	case mb.EventsFetcher:
 		msw.multiEventFetch(fetcher, reporter)
 	case mb.ReportingMetricSet:
-		reporter.StartFetchTimer()
-		fetcher.Fetch(reporter.V1())
-	case mb.ReportingMetricSetV2:
-		reporter.StartFetchTimer()
-		fetcher.Fetch(reporter.V2())
+		msw.reportingFetch(fetcher, reporter)
 	default:
 		panic(fmt.Sprintf("unexpected fetcher type for %v", msw))
 	}
@@ -219,19 +207,24 @@ func (msw *metricSetWrapper) fetch(reporter reporter) {
 func (msw *metricSetWrapper) singleEventFetch(fetcher mb.EventFetcher, reporter reporter) {
 	reporter.StartFetchTimer()
 	event, err := fetcher.Fetch()
-	reporter.V1().ErrorWith(err, event)
+	reporter.ErrorWith(err, event)
 }
 
 func (msw *metricSetWrapper) multiEventFetch(fetcher mb.EventsFetcher, reporter reporter) {
 	reporter.StartFetchTimer()
 	events, err := fetcher.Fetch()
 	if len(events) == 0 {
-		reporter.V1().ErrorWith(err, nil)
+		reporter.ErrorWith(err, nil)
 	} else {
 		for _, event := range events {
-			reporter.V1().ErrorWith(err, event)
+			reporter.ErrorWith(err, event)
 		}
 	}
+}
+
+func (msw *metricSetWrapper) reportingFetch(fetcher mb.ReportingMetricSet, reporter reporter) {
+	reporter.StartFetchTimer()
+	fetcher.Fetch(reporter)
 }
 
 // close closes the underlying MetricSet if it implements the mb.Closer
@@ -250,17 +243,27 @@ func (msw *metricSetWrapper) String() string {
 }
 
 func (msw *metricSetWrapper) Test(d testing.Driver) {
+	done := make(chan struct{})
 	d.Run(msw.Name(), func(d testing.Driver) {
-		events := make(chan beat.Event, 1)
-		done := receiveOneEvent(d, events, msw.module.maxStartDelay+5*time.Second)
-		msw.run(done, events)
+		// ReportingMetricSet would hang out forever, perhaps we can add a timeout based test in the future
+		if _, ok := msw.MetricSet.(mb.ReportingMetricSet); ok {
+			d.Warn("test", "metricset doesn't support testing")
+			return
+		}
+
+		reporter := &testingReporter{
+			driver: d,
+			done:   done,
+		}
+		msw.fetch(reporter)
 	})
 }
 
+// Reporter implementation
+
 type reporter interface {
+	mb.PushReporter
 	StartFetchTimer()
-	V1() mb.PushReporter
-	V2() mb.PushReporterV2
 }
 
 // eventReporter implements the Reporter interface which is a callback interface
@@ -275,63 +278,49 @@ type eventReporter struct {
 
 // startFetchTimer demarcates the start of a new fetch. The elapsed time of a
 // fetch is computed based on the time of this call.
-func (r *eventReporter) StartFetchTimer() { r.start = time.Now() }
-func (r *eventReporter) V1() mb.PushReporter {
-	return reporterV1{v2: r.V2(), module: r.msw.module.Name()}
-}
-func (r *eventReporter) V2() mb.PushReporterV2 { return reporterV2{r} }
-
-// reporterV1 wraps V2 to provide a v1 interface.
-type reporterV1 struct {
-	v2     mb.PushReporterV2
-	module string
+func (r *eventReporter) StartFetchTimer() {
+	r.start = time.Now()
 }
 
-func (r reporterV1) Done() <-chan struct{}          { return r.v2.Done() }
-func (r reporterV1) Event(event common.MapStr) bool { return r.ErrorWith(nil, event) }
-func (r reporterV1) Error(err error) bool           { return r.ErrorWith(err, nil) }
-func (r reporterV1) ErrorWith(err error, meta common.MapStr) bool {
+func (r *eventReporter) Done() <-chan struct{} {
+	return r.done
+}
+
+func (r *eventReporter) Event(event common.MapStr) bool {
+	return r.ErrorWith(nil, event)
+}
+
+func (r *eventReporter) Error(err error) bool {
+	return r.ErrorWith(err, nil)
+}
+
+func (r *eventReporter) ErrorWith(err error, meta common.MapStr) bool {
 	// Skip nil events without error
 	if err == nil && meta == nil {
 		return true
 	}
-	return r.v2.Event(mb.TransformMapStrToEvent(r.module, meta, err))
-}
+	timestamp := r.start
+	elapsed := time.Duration(0)
 
-type reporterV2 struct {
-	*eventReporter
-}
-
-func (r reporterV2) Done() <-chan struct{} { return r.done }
-func (r reporterV2) Error(err error) bool  { return r.Event(mb.Event{Error: err}) }
-func (r reporterV2) Event(event mb.Event) bool {
-	if event.Took == 0 && !r.start.IsZero() {
-		event.Took = time.Since(r.start)
+	if !timestamp.IsZero() {
+		elapsed = time.Since(timestamp)
+	} else {
+		timestamp = time.Now()
 	}
 
-	if event.Timestamp.IsZero() {
-		if !r.start.IsZero() {
-			event.Timestamp = r.start
-		} else {
-			event.Timestamp = time.Now().UTC()
-		}
-	}
-
-	if event.Host == "" {
-		event.Host = r.msw.Host()
-	}
-
-	if event.Error == nil {
+	if err == nil {
 		r.msw.stats.success.Add(1)
 	} else {
 		r.msw.stats.failures.Add(1)
 	}
 
-	if event.Namespace == "" {
-		event.Namespace = r.msw.Registration().Namespace
+	event, err := createEvent(r.msw, meta, err, timestamp, elapsed)
+	if err != nil {
+		logp.Err("createEvent failed: %v", err)
+		return false
 	}
-	beatEvent := event.BeatEvent(r.msw.module.Name(), r.msw.MetricSet.Name(), r.msw.module.eventModifiers...)
-	if !writeEvent(r.done, r.out, beatEvent) {
+
+	if !writeEvent(r.done, r.out, event) {
 		return false
 	}
 	r.msw.stats.events.Add(1)

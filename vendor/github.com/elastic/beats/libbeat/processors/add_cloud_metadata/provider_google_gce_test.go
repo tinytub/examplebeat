@@ -111,7 +111,9 @@ func initGCETestServer() *httptest.Server {
 }
 
 func TestRetrieveGCEMetadata(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	server := initGCETestServer()
 	defer server.Close()

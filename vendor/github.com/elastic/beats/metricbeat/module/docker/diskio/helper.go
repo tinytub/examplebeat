@@ -3,9 +3,9 @@ package diskio
 import (
 	"time"
 
-	"github.com/docker/docker/api/types"
-
 	"github.com/elastic/beats/metricbeat/module/docker"
+
+	dc "github.com/fsouza/go-dockerclient"
 )
 
 type BlkioStats struct {
@@ -46,12 +46,12 @@ func (io *BLkioService) getBlkioStatsList(rawStats []docker.Stat) []BlkioStats {
 }
 
 func (io *BLkioService) getBlkioStats(myRawStat *docker.Stat) BlkioStats {
-	newBlkioStats := io.getNewStats(myRawStat.Stats.Read, myRawStat.Stats.BlkioStats.IoServicedRecursive)
+	newBlkioStats := io.getNewStats(myRawStat.Stats.Read, myRawStat.Stats.BlkioStats.IOServicedRecursive)
 	oldBlkioStats, exist := io.BlkioSTatsPerContainer[myRawStat.Container.ID]
 
 	myBlkioStats := BlkioStats{
 		Time:      myRawStat.Stats.Read,
-		Container: docker.NewContainer(myRawStat.Container),
+		Container: docker.NewContainer(&myRawStat.Container),
 	}
 
 	if exist {
@@ -65,7 +65,7 @@ func (io *BLkioService) getBlkioStats(myRawStat *docker.Stat) BlkioStats {
 	return myBlkioStats
 }
 
-func (io *BLkioService) getNewStats(time time.Time, blkioEntry []types.BlkioStatEntry) BlkioRaw {
+func (io *BLkioService) getNewStats(time time.Time, blkioEntry []dc.BlkioStatsEntry) BlkioRaw {
 	stats := BlkioRaw{
 		Time:   time,
 		reads:  0,

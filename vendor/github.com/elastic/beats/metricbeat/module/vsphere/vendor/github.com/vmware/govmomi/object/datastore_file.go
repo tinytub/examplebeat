@@ -1,5 +1,5 @@
 /*
-Copyright (c) 2016-2017 VMware, Inc. All Rights Reserved.
+Copyright (c) 2016 VMware, Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"os"
 	"path"
-	"sync"
 	"time"
 
 	"github.com/vmware/govmomi/vim25/soap"
@@ -233,9 +232,8 @@ func (f *DatastoreFile) get() (io.Reader, error) {
 	return f.body, nil
 }
 
-func lastIndexLines(s []byte, line *int, include func(l int, m string) bool) (int64, bool) {
+func lastIndexLines(s []byte, n *int) int64 {
 	i := len(s) - 1
-	done := false
 
 	for i > 0 {
 		o := bytes.LastIndexByte(s[:i], '\n')
@@ -243,27 +241,18 @@ func lastIndexLines(s []byte, line *int, include func(l int, m string) bool) (in
 			break
 		}
 
-		msg := string(s[o+1 : i+1])
-		if !include(*line, msg) {
-			done = true
+		i = o
+		*n--
+		if *n == 0 {
 			break
-		} else {
-			i = o
-			*line++
 		}
 	}
 
-	return int64(i), done
+	return int64(i)
 }
 
 // Tail seeks to the position of the last N lines of the file.
 func (f *DatastoreFile) Tail(n int) error {
-	return f.TailFunc(n, func(line int, _ string) bool { return n > line })
-}
-
-// TailFunc will seek backwards in the datastore file until it hits a line that does
-// not satisfy the supplied `include` function.
-func (f *DatastoreFile) TailFunc(lines int, include func(line int, message string) bool) error {
 	// Read the file in reverse using bsize chunks
 	const bsize = int64(1024 * 16)
 
@@ -272,14 +261,13 @@ func (f *DatastoreFile) TailFunc(lines int, include func(line int, message strin
 		return err
 	}
 
-	if lines == 0 {
+	if n == 0 {
 		return nil
 	}
 
 	chunk := int64(-1)
 
 	buf := bytes.NewBuffer(make([]byte, 0, bsize))
-	line := 0
 
 	for {
 		var eof bool
@@ -310,19 +298,19 @@ func (f *DatastoreFile) TailFunc(lines int, include func(line int, message strin
 		}
 
 		b := buf.Bytes()
-		idx, done := lastIndexLines(b, &line, include)
+		idx := lastIndexLines(b, &n) + 1
 
-		if done {
+		if n == 0 {
 			if chunk == -1 {
 				// We found all N lines in the last chunk of the file.
 				// The seek offset is also now at the current end of file.
 				// Save this buffer to avoid another GET request when Read() is called.
-				buf.Next(int(idx + 1))
+				buf.Next(int(idx))
 				f.buf = buf
 				return nil
 			}
 
-			if _, err = f.Seek(pos+idx+1, io.SeekStart); err != nil {
+			if _, err = f.Seek(pos+idx, io.SeekStart); err != nil {
 				return err
 			}
 
@@ -348,7 +336,6 @@ type followDatastoreFile struct {
 	r *DatastoreFile
 	c chan struct{}
 	i time.Duration
-	o sync.Once
 }
 
 // Read reads up to len(b) bytes from the DatastoreFile being followed.
@@ -400,15 +387,11 @@ func (f *followDatastoreFile) Read(p []byte) (int, error) {
 
 // Close will stop Follow polling and close the underlying DatastoreFile.
 func (f *followDatastoreFile) Close() error {
-	f.o.Do(func() { close(f.c) })
+	close(f.c)
 	return nil
 }
 
 // Follow returns an io.ReadCloser to stream the file contents as data is appended.
 func (f *DatastoreFile) Follow(interval time.Duration) io.ReadCloser {
-	return &followDatastoreFile{
-		r: f,
-		c: make(chan struct{}),
-		i: interval,
-	}
+	return &followDatastoreFile{f, make(chan struct{}), interval}
 }

@@ -12,7 +12,7 @@ include::../../libbeat/docs/shared-note-file-permissions.asciidoc[]
 [[load-prospector-config]]
 === Prospector config
 
-For prospector configurations, you specify the `path` option in the
+For prospector configurations, you specify `path` option in the
 `filebeat.config.prospectors` section of the +{beatname_lc}.yml+ file. For
 example:
 
@@ -23,15 +23,8 @@ filebeat.config.prospectors:
   path: configs/*.yml
 ------------------------------------------------------------------------------
 
-
-Each file found by the `path` Glob must contain a list of one or more prospector
-definitions. 
- 
-TIP: The first line of each external configuration file must be a prospector
-definition that starts with `- type`. Make sure you omit the line
-`filebeat.config.prospectors` from this file.
- 
-For example:
+Each file found by the Glob must contain a list of one or more prospector
+definitions. For example:
 
 [source,yaml]
 ------------------------------------------------------------------------------
@@ -73,13 +66,7 @@ the <<modules-command,`modules`>> command to enable and disable module
 configurations.
 
 Each file found by the Glob must contain a list of one or more module
-definitions. 
- 
-TIP: The first line of each external configuration file must be a module
-definition that starts with `- module`. Make sure you omit the line
-`filebeat.config.modules` from this file.
-
-For example:
+definitions. For example:
 
 [source,yaml]
 ------------------------------------------------------------------------------
@@ -95,11 +82,9 @@ For example:
 
 === Live reloading
 
-You can configure Filebeat to dynamically reload external configuration files
-when there are changes. This feature is available for prospector and module
-configurations that are loaded as
-<<filebeat-configuration-reloading,external configuration files>>. You cannot
-use this feature to reload the main +{beatname_lc}.yml+ configuration file.
+You can configure Filebeat to dynamically reload configuration files when there
+are changes. This feature is available for prospector and module configuration
+files only.
 
 To configure this feature, you specify a path
 (https://golang.org/pkg/path/filepath/#Glob[Glob]) to watch for configuration

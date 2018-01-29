@@ -1,11 +1,12 @@
 package diskio
 
 import (
-	"github.com/docker/docker/client"
-
 	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/common/cfgwarn"
 	"github.com/elastic/beats/metricbeat/mb"
 	"github.com/elastic/beats/metricbeat/module/docker"
+
+	dc "github.com/fsouza/go-dockerclient"
 )
 
 func init() {
@@ -17,11 +18,13 @@ func init() {
 type MetricSet struct {
 	mb.BaseMetricSet
 	blkioService *BLkioService
-	dockerClient *client.Client
+	dockerClient *dc.Client
 }
 
 // New create a new instance of the docker diskio MetricSet.
 func New(base mb.BaseMetricSet) (mb.MetricSet, error) {
+	cfgwarn.Beta("The docker diskio metricset is beta")
+
 	config := docker.Config{}
 	if err := base.Module().UnpackConfig(&config); err != nil {
 		return nil, err

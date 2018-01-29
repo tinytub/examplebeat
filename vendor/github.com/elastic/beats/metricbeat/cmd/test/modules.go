@@ -9,7 +9,6 @@ import (
 	"github.com/elastic/beats/libbeat/cmd/instance"
 	"github.com/elastic/beats/libbeat/testing"
 	"github.com/elastic/beats/metricbeat/beater"
-	"github.com/elastic/beats/metricbeat/mb/module"
 )
 
 func GenTestModulesCmd(name, beatVersion string) *cobra.Command {
@@ -38,16 +37,7 @@ func GenTestModulesCmd(name, beatVersion string) *cobra.Command {
 				os.Exit(1)
 			}
 
-			// Use a customized instance of Metricbeat where startup delay has
-			// been disabled to workaround the fact that Modules() will return
-			// the static modules (not the dynamic ones) with a start delay.
-			create := beater.Creator(
-				beater.WithModuleOptions(
-					module.WithMetricSetInfo(),
-					module.WithMaxStartDelay(0),
-				),
-			)
-			mb, err := create(&b.Beat, b.Beat.BeatConfig)
+			mb, err := beater.New(&b.Beat, b.Beat.BeatConfig)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error initializing metricbeat: %s\n", err)
 				os.Exit(1)

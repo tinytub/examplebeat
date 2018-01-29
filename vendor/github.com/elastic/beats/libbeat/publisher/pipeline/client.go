@@ -69,7 +69,7 @@ func (c *client) publish(e beat.Event) {
 		if err != nil {
 			// TODO: introduce dead-letter queue?
 
-			log.Errorf("Failed to publish event: %v", err)
+			log.Errf("Failed to publish event: %v", err)
 		}
 	}
 

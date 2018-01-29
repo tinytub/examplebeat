@@ -19,7 +19,8 @@ func main() {
 		}
 	*/
 
-	err := instance.Run("metricbeat", "metricbeat", "", beater.DefaultCreator())
+	//err := instance.Run("metricbeat", "metricbeat", "", beater.DefaultCreator())
+	err := instance.Run("metricbeat", "metricbeat", "", beater.New)
 	if err != nil {
 		fmt.Println(err)
 	}

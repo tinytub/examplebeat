@@ -204,7 +204,9 @@ func TestGetPipelineNginx(t *testing.T) {
 }
 
 func TestGetPipelineConvertTS(t *testing.T) {
-	logp.TestingSetup(logp.WithSelectors("fileset", "modules"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"fileset", "modules"})
+	}
 
 	// load system/syslog
 	modulesPath, err := filepath.Abs("../module")

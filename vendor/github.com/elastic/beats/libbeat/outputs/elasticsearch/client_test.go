@@ -84,7 +84,7 @@ func TestCollectPublishFailsNone(t *testing.T) {
 	}
 
 	reader := newJSONReader(response)
-	res, _ := bulkCollectPublishFails(reader, events)
+	res := bulkCollectPublishFails(reader, events)
 	assert.Equal(t, 0, len(res))
 }
 
@@ -102,7 +102,7 @@ func TestCollectPublishFailMiddle(t *testing.T) {
 	events := []publisher.Event{event, eventFail, event}
 
 	reader := newJSONReader(response)
-	res, _ := bulkCollectPublishFails(reader, events)
+	res := bulkCollectPublishFails(reader, events)
 	assert.Equal(t, 1, len(res))
 	if len(res) == 1 {
 		assert.Equal(t, eventFail, res[0])
@@ -122,13 +122,15 @@ func TestCollectPublishFailAll(t *testing.T) {
 	events := []publisher.Event{event, event, event}
 
 	reader := newJSONReader(response)
-	res, _ := bulkCollectPublishFails(reader, events)
+	res := bulkCollectPublishFails(reader, events)
 	assert.Equal(t, 3, len(res))
 	assert.Equal(t, events, res)
 }
 
 func TestCollectPipelinePublishFail(t *testing.T) {
-	logp.TestingSetup(logp.WithSelectors("elasticsearch"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"elasticsearch"})
+	}
 
 	response := []byte(`{
       "took": 0, "ingest_took": 0, "errors": true,
@@ -163,7 +165,7 @@ func TestCollectPipelinePublishFail(t *testing.T) {
 	events := []publisher.Event{event}
 
 	reader := newJSONReader(response)
-	res, _ := bulkCollectPublishFails(reader, events)
+	res := bulkCollectPublishFails(reader, events)
 	assert.Equal(t, 1, len(res))
 	assert.Equal(t, events, res)
 }
@@ -178,7 +180,7 @@ func TestGetIndexStandard(t *testing.T) {
 	indexSel := outil.MakeSelector(outil.FmtSelectorExpr(fmtstr, ""))
 
 	event := &beat.Event{Timestamp: ts, Fields: fields}
-	index, _ := getIndex(event, indexSel)
+	index := getIndex(event, indexSel)
 	assert.Equal(t, index, "beatname-"+extension)
 }
 
@@ -204,7 +206,7 @@ func TestGetIndexOverwrite(t *testing.T) {
 			"index": "dynamicindex",
 		},
 		Fields: fields}
-	index, _ := getIndex(event, indexSel)
+	index := getIndex(event, indexSel)
 	expected := "dynamicindex-" + extension
 	assert.Equal(t, expected, index)
 }
@@ -224,7 +226,7 @@ func BenchmarkCollectPublishFailsNone(b *testing.B) {
 	reader := newJSONReader(nil)
 	for i := 0; i < b.N; i++ {
 		reader.init(response)
-		res, _ := bulkCollectPublishFails(reader, events)
+		res := bulkCollectPublishFails(reader, events)
 		if len(res) != 0 {
 			b.Fail()
 		}
@@ -247,7 +249,7 @@ func BenchmarkCollectPublishFailMiddle(b *testing.B) {
 	reader := newJSONReader(nil)
 	for i := 0; i < b.N; i++ {
 		reader.init(response)
-		res, _ := bulkCollectPublishFails(reader, events)
+		res := bulkCollectPublishFails(reader, events)
 		if len(res) != 1 {
 			b.Fail()
 		}
@@ -269,7 +271,7 @@ func BenchmarkCollectPublishFailAll(b *testing.B) {
 	reader := newJSONReader(nil)
 	for i := 0; i < b.N; i++ {
 		reader.init(response)
-		res, _ := bulkCollectPublishFails(reader, events)
+		res := bulkCollectPublishFails(reader, events)
 		if len(res) != 3 {
 			b.Fail()
 		}

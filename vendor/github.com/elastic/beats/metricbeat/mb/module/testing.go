@@ -2,55 +2,45 @@ package module
 
 import (
 	"encoding/json"
-	"errors"
-	"time"
 
-	"github.com/elastic/beats/libbeat/beat"
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/testing"
 )
 
-// receiveOneEvent receives one event from the events channel then closes the
-// returned done channel. If no events are received it will close the returned
-// done channel after the timeout period elapses.
-func receiveOneEvent(d testing.Driver, events <-chan beat.Event, timeout time.Duration) <-chan struct{} {
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		select {
-		case <-time.Tick(timeout):
-			d.Error("error", errors.New("timeout waiting for an event"))
-		case event, ok := <-events:
-			if !ok {
-				return
-			}
-
-			// At this point in the pipeline the error has been converted to a
-			// string and written to error.message.
-			if v, err := event.Fields.GetValue("error.message"); err == nil {
-				if errMsg, ok := v.(string); ok {
-					d.Error("error", errors.New(errMsg))
-					return
-				}
-			}
-
-			outputJSON(d, &event)
-		}
-	}()
-
-	return done
+// testingReporter offers reported interface and send results to testing.Driver
+type testingReporter struct {
+	driver testing.Driver
+	done   <-chan struct{}
 }
 
-func outputJSON(d testing.Driver, event *beat.Event) {
-	out := event.Fields.Clone()
-	out.Put("@timestamp", common.Time(event.Timestamp))
-	jsonData, err := json.MarshalIndent(out, "", " ")
+func (r *testingReporter) Done() <-chan struct{} {
+	return r.done
+}
+
+func (r *testingReporter) Event(event common.MapStr) bool {
+	return r.ErrorWith(nil, event)
+}
+
+func (r *testingReporter) Error(err error) bool {
+	return r.ErrorWith(err, nil)
+}
+
+func (r *testingReporter) ErrorWith(err error, event common.MapStr) bool {
 	if err != nil {
-		d.Error("convert error", err)
-		return
+		r.driver.Error("error", err)
 	}
 
-	d.Result(string(jsonData))
+	if event != nil {
+		d, err := json.MarshalIndent(&event, "", " ")
+		if err != nil {
+			r.driver.Error("convert event", err)
+			return true
+		}
+
+		r.driver.Result(string(d))
+	}
+
+	return true
 }
+
+func (r testingReporter) StartFetchTimer() {}

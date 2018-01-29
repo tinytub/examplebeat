@@ -28,7 +28,10 @@ func TestEventMapping(t *testing.T) {
 		},
 	}
 
-	event := eventMapping(HostSystemTest)
+	event := eventMapping(HostSystemTest, "test")
+
+	datacenter, _ := event.GetValue("datacenter")
+	assert.EqualValues(t, "test", datacenter)
 
 	cpuUsed, _ := event.GetValue("cpu.used.mhz")
 	assert.EqualValues(t, 67, cpuUsed)

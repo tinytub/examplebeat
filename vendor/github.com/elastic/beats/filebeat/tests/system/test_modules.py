@@ -89,9 +89,7 @@ class Test(BaseTest):
                 if ev["_source"][module] == obj[module]:
                     found = True
                     break
-
-            assert found, "The following expected object was not found:\n {}\nSearched in: \n{}".format(
-                ev["_source"][module], objects)
+            assert found, "The following expected object was not found: {}".format(obj)
 
     def run_on_file(self, module, fileset, test_file, cfgfile):
         print("Testing {}/{} on {}".format(module, fileset, test_file))
@@ -140,11 +138,8 @@ class Test(BaseTest):
 
             assert "error" not in obj, "not error expected but got: {}".format(obj)
 
-            if (module == "auditd" and fileset == "log") \
-                    or (module == "osquery" and fileset == "result"):
-                # There are dynamic fields that are not documented.
-                pass
-            else:
+            if (module != "auditd" and fileset != "log"):
+                # There are dynamic fields in audit logs that are not documented.
                 self.assert_fields_are_documented(obj)
 
         if os.path.exists(test_file + "-expected.json"):

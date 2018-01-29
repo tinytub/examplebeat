@@ -8,7 +8,7 @@ import (
 	mbtest "github.com/elastic/beats/metricbeat/mb/testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/vic/pkg/vsphere/simulator"
 )
 
 func TestFetchEventContents(t *testing.T) {
@@ -30,7 +30,7 @@ func TestFetchEventContents(t *testing.T) {
 
 	t.Logf("%s/%s event: %+v", f.Module().Name(), f.Name(), event.StringToPrint())
 
-	assert.EqualValues(t, "ha-host", event["host"])
+	assert.EqualValues(t, "ha-datacenter", event["datacenter"])
 	assert.True(t, strings.Contains(event["name"].(string), "ha-host_VM"))
 
 	cpu := event["cpu"].(common.MapStr)

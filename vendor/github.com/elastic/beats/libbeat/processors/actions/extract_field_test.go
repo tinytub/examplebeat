@@ -74,7 +74,9 @@ func TestCommonPaths(t *testing.T) {
 }
 
 func runExtractField(t *testing.T, config *common.Config, input common.MapStr) common.MapStr {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	p, err := NewExtractField(config)
 	if err != nil {

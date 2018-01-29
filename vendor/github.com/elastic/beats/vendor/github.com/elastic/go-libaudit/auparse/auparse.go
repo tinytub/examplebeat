@@ -49,22 +49,10 @@ type AuditMessage struct {
 	Sequence   uint32           // Sequence parsed from payload.
 	RawData    string           // Raw message as a string.
 
-	fields map[string]*field
 	offset int               // offset is the index into RawData where the header ends and message begins.
 	data   map[string]string // The key value pairs parsed from the message.
-	tags   []string          // The keys associated with the event (e.g. the values set in rules with -F key=exec).
 	error  error             // Error that occurred while parsing.
 }
-
-type field struct {
-	orig  string // Original field value parse from message (including quotes).
-	value string // Parsed and enriched value.
-}
-
-func newField(orig string) *field { return &field{orig: orig, value: orig} }
-func (f *field) Orig() string     { return f.orig }
-func (f *field) Value() string    { return f.value }
-func (f *field) Set(value string) { f.value = value }
 
 // Data returns the key-value pairs that are contained in the audit message.
 // This information is parsed from the raw message text the first time this
@@ -87,26 +75,14 @@ func (m *AuditMessage) Data() (map[string]string, error) {
 		return nil, m.error
 	}
 
-	m.fields = map[string]*field{}
-	defer func() { m.fields = nil }()
-	extractKeyValuePairs(message, m.fields)
+	m.data = map[string]string{}
+	extractKeyValuePairs(message, m.data)
 
 	if err = enrichData(m); err != nil {
 		m.error = err
-		return nil, m.error
-	}
-
-	m.data = make(map[string]string, len(m.fields))
-	for k, f := range m.fields {
-		m.data[k] = f.Value()
 	}
 
 	return m.data, m.error
-}
-
-func (m *AuditMessage) Tags() ([]string, error) {
-	_, err := m.Data()
-	return m.tags, err
 }
 
 // ToMapStr returns a new map containing the parsed key value pairs, the
@@ -114,11 +90,11 @@ func (m *AuditMessage) Tags() ([]string, error) {
 // a lower precedence than the well-known keys and will not override them.
 // If an error occurred while parsing the message then an error key will be
 // present.
-func (m *AuditMessage) ToMapStr() map[string]interface{} {
+func (m *AuditMessage) ToMapStr() map[string]string {
 	// Ensure event has been parsed.
 	data, err := m.Data()
 
-	out := make(map[string]interface{}, len(data)+5)
+	out := make(map[string]string, len(data)+4)
 	for k, v := range data {
 		out[k] = v
 	}
@@ -127,9 +103,6 @@ func (m *AuditMessage) ToMapStr() map[string]interface{} {
 	out["@timestamp"] = m.Timestamp.UTC().String()
 	out["sequence"] = strconv.FormatUint(uint64(m.Sequence), 10)
 	out["raw_msg"] = m.RawData
-	if len(m.tags) > 0 {
-		out["tags"] = m.tags
-	}
 	if err != nil {
 		out["error"] = err.Error()
 	}
@@ -277,187 +250,180 @@ func normalizeAuditMessage(typ AuditMessageType, msg string) (string, error) {
 	return msg, nil
 }
 
-func extractKeyValuePairs(msg string, data map[string]*field) {
+func extractKeyValuePairs(msg string, data map[string]string) {
 	matches := kvRegex.FindAllStringSubmatch(msg, -1)
 	for _, m := range matches {
 		key := m[1]
-		f := newField(m[2])
-		f.Set(trimQuotesAndSpace(m[2]))
+		value := trimQuotesAndSpace(m[2])
 
 		// Drop fields with useless values.
-		switch f.Value() {
+		switch value {
 		case "", "?", "?,", "(null)":
 			continue
 		}
 
 		if key == "msg" {
-			extractKeyValuePairs(f.Value(), data)
+			extractKeyValuePairs(value, data)
 		} else {
-			data[key] = f
+			data[key] = value
 		}
 	}
 }
 
-func trimQuotesAndSpace(v string) string { return strings.Trim(v, `'" `) }
+func trimQuotesAndSpace(v string) string {
+	return strings.Trim(v, `'" `)
+}
 
 // Enrichment after KV parsing
 
 func enrichData(msg *AuditMessage) error {
-	normalizeUnsetID("auid", msg.fields)
-	normalizeUnsetID("ses", msg.fields)
+	normalizeUnsetID("auid", msg.data)
+	normalizeUnsetID("ses", msg.data)
 
 	// Many different message types can have subj field so check them all.
-	parseSELinuxContext("subj", msg.fields)
+	parseSELinuxContext("subj", msg.data)
 
 	// Normalize success/res to result.
-	result(msg.fields)
+	result(msg.data)
 
 	// Convert exit codes to named POSIX exit codes.
-	exit(msg.fields)
+	exit(msg.data)
 
 	// Normalize keys that are of the form key="key=user_command".
-	auditRuleKey(msg)
+	auditRuleKey(msg.data)
 
-	hexDecode("cwd", msg.fields)
+	hexDecode("cwd", msg.data)
 
 	switch msg.RecordType {
 	case AUDIT_SYSCALL:
-		if err := arch(msg.fields); err != nil {
+		if err := arch(msg.data); err != nil {
 			return err
 		}
-		if err := syscall(msg.fields); err != nil {
+		if err := syscall(msg.data); err != nil {
 			return err
 		}
-		if err := hexDecode("exe", msg.fields); err != nil {
+		if err := hexDecode("exe", msg.data); err != nil {
 			return err
 		}
 	case AUDIT_SOCKADDR:
-		if err := saddr(msg.fields); err != nil {
+		if err := saddr(msg.data); err != nil {
 			return err
 		}
 	case AUDIT_PROCTITLE:
-		if err := hexDecode("proctitle", msg.fields); err != nil {
+		if err := hexDecode("proctitle", msg.data); err != nil {
 			return err
 		}
 	case AUDIT_USER_CMD:
-		if err := hexDecode("cmd", msg.fields); err != nil {
+		if err := hexDecode("cmd", msg.data); err != nil {
 			return err
 		}
 	case AUDIT_TTY, AUDIT_USER_TTY:
-		if err := hexDecode("data", msg.fields); err != nil {
+		if err := hexDecode("data", msg.data); err != nil {
 			return err
 		}
 	case AUDIT_EXECVE:
-		if err := execveArgs(msg.fields); err != nil {
+		if err := execveCmdline(msg.data); err != nil {
 			return err
 		}
 	case AUDIT_PATH:
-		parseSELinuxContext("obj", msg.fields)
+		parseSELinuxContext("obj", msg.data)
 	case AUDIT_USER_LOGIN:
 		// acct only exists in failed logins.
-		hexDecode("acct", msg.fields)
+		hexDecode("acct", msg.data)
 	}
 
 	return nil
 }
 
-func arch(data map[string]*field) error {
-	field, found := data["arch"]
+func arch(data map[string]string) error {
+	hex, found := data["arch"]
 	if !found {
 		return errors.New("arch key not found")
 	}
 
-	arch, err := strconv.ParseInt(field.Value(), 16, 64)
+	arch, err := strconv.ParseInt(hex, 16, 64)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse arch")
 	}
 
-	field.Set(AuditArch(arch).String())
+	data["arch"] = AuditArch(arch).String()
 	return nil
 }
 
-func syscall(data map[string]*field) error {
-	field, found := data["syscall"]
+func syscall(data map[string]string) error {
+	num, found := data["syscall"]
 	if !found {
 		return errors.New("syscall key not found")
 	}
 
-	syscall, err := strconv.Atoi(field.Value())
+	syscall, err := strconv.Atoi(num)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse syscall")
 	}
 
-	arch, found := data["arch"]
-	if !found {
-		return errors.New("arch key not found so syscall cannot be translated to a name")
-	}
-
-	if name, found := AuditSyscalls[arch.Value()][syscall]; found {
-		field.Set(name)
-	}
+	arch := data["arch"]
+	data["syscall"] = AuditSyscalls[arch][syscall]
 	return nil
 }
 
-func saddr(data map[string]*field) error {
-	field, found := data["saddr"]
+func saddr(data map[string]string) error {
+	saddr, found := data["saddr"]
 	if !found {
 		return errors.New("saddr key not found")
 	}
 
-	saddrData, err := parseSockaddr(field.Value())
+	saddrData, err := parseSockaddr(saddr)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse saddr")
 	}
 
 	delete(data, "saddr")
 	for k, v := range saddrData {
-		data[k] = newField(v)
+		data[k] = v
 	}
 	return nil
 }
 
-func normalizeUnsetID(key string, data map[string]*field) {
-	field, found := data[key]
+func normalizeUnsetID(key string, data map[string]string) {
+	id, found := data[key]
 	if !found {
 		return
 	}
 
-	switch field.Value() {
+	switch id {
 	case "4294967295", "-1":
-		field.Set("unset")
+		data[key] = "unset"
 	}
 }
 
-func hexDecode(key string, data map[string]*field) error {
-	field, found := data[key]
+func hexDecode(key string, data map[string]string) error {
+	hexValue, found := data[key]
 	if !found {
 		return errors.Errorf("%v key not found", key)
 	}
 
-	// Use the original value that may or may not contain a leading quote.
-	decodedStrings, err := hexToStrings(field.Orig())
+	ascii, err := hexToASCII(hexValue)
 	if err != nil {
 		// Field is not in hex. Ignore.
 		return nil
 	}
 
-	if len(decodedStrings) > 0 {
-		field.Set(strings.Join(decodedStrings, " "))
-	}
+	data[key] = ascii
 	return nil
 }
 
-func execveArgs(data map[string]*field) error {
+func execveCmdline(data map[string]string) error {
 	argc, found := data["argc"]
 	if !found {
 		return errors.New("argc key not found")
 	}
 
-	count, err := strconv.ParseUint(argc.Value(), 10, 32)
+	count, err := strconv.ParseUint(argc, 10, 32)
 	if err != nil {
 		return errors.Wrapf(err, "failed to convert argc='%v' to number", argc)
 	}
 
+	var args []string
 	for i := 0; i < int(count); i++ {
 		key := "a" + strconv.Itoa(i)
 
@@ -466,40 +432,74 @@ func execveArgs(data map[string]*field) error {
 			return errors.Errorf("failed to find arg %v", key)
 		}
 
-		if ascii, err := hexToString(arg.Orig()); err == nil {
-			arg.Set(ascii)
+		if ascii, err := hexToASCII(arg); err == nil {
+			arg = ascii
 		}
+
+		args = append(args, arg)
 	}
 
+	// Delete aN keys after successfully extracting all values.
+	for i := 0; i < int(count); i++ {
+		key := "a" + strconv.Itoa(i)
+		delete(data, key)
+	}
+
+	data["cmdline"] = joinQuoted(args, " ")
 	return nil
+}
+
+// joinQuoted concatenates the elements of a to create a single string. The
+// separator string sep is placed between elements in the resulting string. Each
+// element of a is double quoted (any inner quotes are escaped).
+func joinQuoted(a []string, sep string) string {
+	switch len(a) {
+	case 0:
+		return ""
+	case 1:
+		return strconv.Quote(a[0])
+	}
+
+	n := len(sep) * (len(a) - 1)
+	for i := 0; i < len(a); i++ {
+		n += len(a[i]) + 2
+	}
+
+	b := make([]byte, 0, n)
+	b = strconv.AppendQuote(b, a[0])
+	for _, s := range a[1:] {
+		b = append(b, []byte(sep)...)
+		b = strconv.AppendQuote(b, s)
+	}
+	return string(b)
 }
 
 // parseSELinuxContext parses a SELinux security context of the form
 // 'user:role:domain:level:category'.
-func parseSELinuxContext(key string, data map[string]*field) error {
-	field, found := data[key]
+func parseSELinuxContext(key string, data map[string]string) error {
+	context, found := data[key]
 	if !found {
 		return errors.Errorf("%v key not found", key)
 	}
 
 	keys := []string{"_user", "_role", "_domain", "_level", "_category"}
-	contextParts := strings.SplitN(field.Value(), ":", len(keys))
+	contextParts := strings.SplitN(context, ":", len(keys))
 	if len(contextParts) == 0 {
 		return errors.Errorf("failed to split SELinux context field %v", key)
 	}
 	delete(data, key)
 
 	for i, part := range contextParts {
-		data[key+keys[i]] = newField(part)
+		data[key+keys[i]] = part
 	}
 	return nil
 }
 
-func result(data map[string]*field) error {
+func result(data map[string]string) error {
 	// Syscall messages use "success". Other messages use "res".
-	field, found := data["success"]
+	result, found := data["success"]
 	if !found {
-		field, found = data["res"]
+		result, found = data["res"]
 		if !found {
 			return errors.New("success and res key not found")
 		}
@@ -508,46 +508,40 @@ func result(data map[string]*field) error {
 		delete(data, "success")
 	}
 
-	switch v := strings.ToLower(field.Value()); {
-	case v == "yes", v == "1", strings.HasPrefix(v, "suc"):
-		data["result"] = newField("success")
+	result = strings.ToLower(result)
+	switch {
+	case result == "yes", result == "1", strings.HasPrefix(result, "suc"):
+		result = "success"
 	default:
-		data["result"] = newField("fail")
+		result = "fail"
 	}
+
+	data["result"] = result
 	return nil
 }
 
-func auditRuleKey(msg *AuditMessage) {
-	field, found := msg.fields["key"]
+func auditRuleKey(data map[string]string) {
+	value, found := data["key"]
 	if !found {
 		return
 	}
-	delete(msg.fields, "key")
 
-	// Handle hex encoded data (e.g. key=28696E7).
-	if decodedData, err := decodeUppercaseHexString(field.Orig()); err == nil {
-		keys := strings.Split(string(decodedData), string([]byte{0x01}))
-		msg.tags = keys
+	// TODO: test multiple keys
+	parts := strings.SplitN(value, "=", 2)
+	if len(parts) != 2 {
 		return
 	}
 
-	parts := strings.SplitN(field.Value(), "=", 2)
-	if len(parts) == 1 {
-		// Handle key="net".
-		msg.tags = parts
-	} else if len(parts) == 2 {
-		// Handle key="key=net".
-		msg.tags = parts[1:]
-	}
+	data["key"] = parts[1]
 }
 
-func exit(data map[string]*field) error {
-	field, found := data["exit"]
+func exit(data map[string]string) error {
+	value, found := data["exit"]
 	if !found {
 		return errors.New("exit key not found")
 	}
 
-	exitCode, err := strconv.Atoi(field.Value())
+	exitCode, err := strconv.Atoi(value)
 	if err != nil {
 		return errors.Wrap(err, "failed to parse exit")
 	}
@@ -561,6 +555,6 @@ func exit(data map[string]*field) error {
 		return nil
 	}
 
-	field.Set(name)
+	data["exit"] = name
 	return nil
 }

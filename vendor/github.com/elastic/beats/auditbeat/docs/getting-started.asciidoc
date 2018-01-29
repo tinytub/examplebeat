@@ -158,15 +158,16 @@ To configure {beatname_uc}:
 modules to collect the audit information. For each module, specify the
 metricsets that you want to collect.
 +
-The following example shows the `file_integrity` module configured to generate
+The following example shows the `file` metricset configured to generate
 events whenever a file in one of the specified paths changes on disk:
 +
 ["source","sh",subs="attributes"]
 -------------------------------------
 auditbeat.modules:
 
-- module: file_integrity
-  paths:
+- module: audit
+  metricsets: [file]
+  file.paths:
   - /bin
   - /usr/bin
   - /sbin

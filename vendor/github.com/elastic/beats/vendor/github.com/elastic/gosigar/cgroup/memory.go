@@ -164,5 +164,5 @@ func memoryStats(path string, mem *MemorySubsystem) error {
 		}
 	}
 
-	return sc.Err()
+	return nil
 }

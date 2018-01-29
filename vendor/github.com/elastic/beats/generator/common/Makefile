@@ -13,12 +13,12 @@ test: prepare-test
 	export GOPATH=${PWD}/build ; \
 	export PATH=${PATH}:${PWD}/build/bin; \
 	cd ${BEAT_PATH} ; \
-	$(MAKE) copy-vendor || exit 1  ; \
+	make copy-vendor || exit 1  ; \
 	${PREPARE_COMMAND} \
-	$(MAKE) check || exit 1 ; \
-	$(MAKE) update || exit 1 ; \
-	$(MAKE) || exit 1 ; \
-	$(MAKE) unit
+	make check || exit 1 ; \
+	make update || exit 1 ; \
+	make || exit 1 ; \
+	make unit
 
 prepare-test:: python-env
 	# Makes sure to use current version of beats for testing
@@ -36,8 +36,8 @@ test-build: test
 	cp -r ${PWD}/../../../dev-tools ${BEAT_PATH}/vendor/github.com/elastic/beats/
 
 	cd ${BEAT_PATH}/dev-tools/packer ; \
-	$(MAKE) deps ; \
-	$(MAKE) images
+	make deps ; \
+	make images
 
 # Sets up the virtual python environment
 .PHONY: python-env

@@ -15,7 +15,7 @@ import (
 
 // Start starts the metrics api endpoint on the configured host and port
 func Start(cfg *common.Config, info beat.Info) {
-	cfgwarn.Experimental("Metrics endpoint is enabled.")
+	cfgwarn.Beta("Metrics endpoint is enabled.")
 	config := DefaultConfig
 	cfg.Unpack(&config)
 

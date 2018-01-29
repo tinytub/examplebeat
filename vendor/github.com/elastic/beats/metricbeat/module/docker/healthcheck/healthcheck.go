@@ -1,12 +1,10 @@
 package healthcheck
 
 import (
-	"context"
-
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	dc "github.com/fsouza/go-dockerclient"
 
 	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/common/cfgwarn"
 	"github.com/elastic/beats/metricbeat/mb"
 	"github.com/elastic/beats/metricbeat/module/docker"
 )
@@ -19,11 +17,13 @@ func init() {
 
 type MetricSet struct {
 	mb.BaseMetricSet
-	dockerClient *client.Client
+	dockerClient *dc.Client
 }
 
 // New creates a new instance of the docker healthcheck MetricSet.
 func New(base mb.BaseMetricSet) (mb.MetricSet, error) {
+	cfgwarn.Beta("The docker healthcheck metricset is beta")
+
 	config := docker.Config{}
 	if err := base.Module().UnpackConfig(&config); err != nil {
 		return nil, err
@@ -44,7 +44,7 @@ func New(base mb.BaseMetricSet) (mb.MetricSet, error) {
 // This is based on https://docs.docker.com/engine/reference/api/docker_remote_api_v1.24/#/list-containers.
 func (m *MetricSet) Fetch() ([]common.MapStr, error) {
 	// Fetch a list of all containers.
-	containers, err := m.dockerClient.ContainerList(context.TODO(), types.ContainerListOptions{})
+	containers, err := m.dockerClient.ListContainers(dc.ListContainersOptions{})
 	if err != nil {
 		return nil, err
 	}

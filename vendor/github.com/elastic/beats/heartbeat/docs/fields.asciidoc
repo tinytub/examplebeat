@@ -212,7 +212,7 @@ The monitors full job ID as used by heartbeat.
 [float]
 == duration fields
 
-Total monitoring test duration
+total monitoring test duration
 
 
 [float]
@@ -259,6 +259,7 @@ Indicator if monitor could validate the service to be available.
 [[exported-fields-docker-processor]]
 == Docker fields
 
+beta[]
 Docker stats collected from Docker.
 
 
@@ -394,7 +395,7 @@ Duration in microseconds
 [float]
 == response_header fields
 
-Time required between sending the start of sending the HTTP request and first byte from HTTP response being read. Duration based on already available network connection.
+Time required between sending the start of sending the HTTP request and first by from HTTP response being read. Duration based on already available network connection.
 
 
 [float]
@@ -460,6 +461,7 @@ Duration in microseconds
 [[exported-fields-kubernetes-processor]]
 == Kubernetes fields
 
+beta[]
 Kubernetes metadata added by the kubernetes processor
 
 
@@ -479,14 +481,6 @@ Kubernetes pod name
 type: keyword
 
 Kubernetes namespace
-
-
-[float]
-=== `kubernetes.node.name`
-
-type: keyword
-
-Kubernetes node name
 
 
 [float]

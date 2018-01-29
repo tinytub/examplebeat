@@ -117,14 +117,14 @@ func cgroupMemoryToMapStr(memory *cgroup.MemorySubsystem) common.MapStr {
 
 	addMemData := func(key string, m common.MapStr, data cgroup.MemoryData) {
 		m[key] = common.MapStr{
-			"failures": data.FailCount,
+			"failures": memory.Mem.FailCount,
 			"limit": common.MapStr{
-				"bytes": data.Limit,
+				"bytes": memory.Mem.Limit,
 			},
 			"usage": common.MapStr{
-				"bytes": data.Usage,
+				"bytes": memory.Mem.Usage,
 				"max": common.MapStr{
-					"bytes": data.MaxUsage,
+					"bytes": memory.Mem.MaxUsage,
 				},
 			},
 		}

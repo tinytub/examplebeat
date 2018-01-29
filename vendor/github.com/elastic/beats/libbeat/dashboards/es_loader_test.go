@@ -10,11 +10,13 @@ import (
 
 	"github.com/elastic/beats/libbeat/common"
 	"github.com/elastic/beats/libbeat/logp"
-	"github.com/elastic/beats/libbeat/outputs/elasticsearch/estest"
+	"github.com/elastic/beats/libbeat/outputs/elasticsearch"
 )
 
 func TestImporter(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	dashboardsConfig := Config{
 		KibanaIndex: ".kibana-test",
@@ -22,7 +24,7 @@ func TestImporter(t *testing.T) {
 		Beat:        "testbeat",
 	}
 
-	client := estest.GetTestingElasticsearch(t)
+	client := elasticsearch.GetTestingElasticsearch(t)
 	if strings.HasPrefix(client.Connection.GetVersion(), "6.") ||
 		strings.HasPrefix(client.Connection.GetVersion(), "7.") {
 		t.Skip("Skipping tests for Elasticsearch 6.x releases")
@@ -50,7 +52,9 @@ func TestImporter(t *testing.T) {
 }
 
 func TestImporterEmptyBeat(t *testing.T) {
-	logp.TestingSetup()
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"*"})
+	}
 
 	dashboardsConfig := Config{
 		KibanaIndex: ".kibana-test-nobeat",
@@ -58,7 +62,7 @@ func TestImporterEmptyBeat(t *testing.T) {
 		Beat:        "",
 	}
 
-	client := estest.GetTestingElasticsearch(t)
+	client := elasticsearch.GetTestingElasticsearch(t)
 	if strings.HasPrefix(client.Connection.GetVersion(), "6.") ||
 		strings.HasPrefix(client.Connection.GetVersion(), "7.") {
 		t.Skip("Skipping tests for Elasticsearch 6.x releases")

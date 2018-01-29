@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/elastic/beats/libbeat/common"
@@ -35,12 +34,6 @@ type Loader interface {
 }
 
 func NewImporter(version common.Version, cfg *Config, loader Loader) (*Importer, error) {
-
-	// Current max version is 6
-	if version.Major > 6 {
-		version.Major = 6
-	}
-
 	return &Importer{
 		cfg:     cfg,
 		version: version,
@@ -254,7 +247,10 @@ func (imp Importer) downloadFile(url string, target string) (string, error) {
 func (imp Importer) ImportKibanaDir(dir string) error {
 	var err error
 
-	versionPath := strconv.Itoa(imp.version.Major)
+	versionPath := "default"
+	if imp.version.Major == 5 {
+		versionPath = "5.x"
+	}
 
 	dir = path.Join(dir, versionPath)
 

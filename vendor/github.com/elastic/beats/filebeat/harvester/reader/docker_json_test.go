@@ -11,15 +11,13 @@ import (
 
 func TestDockerJSON(t *testing.T) {
 	tests := []struct {
-		input           [][]byte
-		stream          string
+		input           []byte
 		expectedError   bool
 		expectedMessage Message
 	}{
 		// Common log message
 		{
-			input:  [][]byte{[]byte(`{"log":"1:M 09 Nov 13:27:36.276 # User requested shutdown...\n","stream":"stdout","time":"2017-11-09T13:27:36.277747246Z"}`)},
-			stream: "all",
+			input: []byte(`{"log":"1:M 09 Nov 13:27:36.276 # User requested shutdown...\n","stream":"stdout","time":"2017-11-09T13:27:36.277747246Z"}`),
 			expectedMessage: Message{
 				Content: []byte("1:M 09 Nov 13:27:36.276 # User requested shutdown...\n"),
 				Fields:  common.MapStr{"stream": "stdout"},
@@ -28,53 +26,35 @@ func TestDockerJSON(t *testing.T) {
 		},
 		// Wrong JSON
 		{
-			input:         [][]byte{[]byte(`this is not JSON`)},
-			stream:        "all",
+			input:         []byte(`this is not JSON`),
 			expectedError: true,
 		},
 		// Missing time
 		{
-			input:         [][]byte{[]byte(`{"log":"1:M 09 Nov 13:27:36.276 # User requested shutdown...\n","stream":"stdout"}`)},
-			stream:        "all",
+			input:         []byte(`{"log":"1:M 09 Nov 13:27:36.276 # User requested shutdown...\n","stream":"stdout"}`),
 			expectedError: true,
-		},
-		// Filtering stream
-		{
-			input: [][]byte{
-				[]byte(`{"log":"filtered\n","stream":"stdout","time":"2017-11-09T13:27:36.277747246Z"}`),
-				[]byte(`{"log":"unfiltered\n","stream":"stderr","time":"2017-11-09T13:27:36.277747246Z"}`),
-				[]byte(`{"log":"unfiltered\n","stream":"stdout","time":"2017-11-09T13:27:36.277747246Z"}`),
-			},
-			stream: "stderr",
-			expectedMessage: Message{
-				Content: []byte("unfiltered\n"),
-				Fields:  common.MapStr{"stream": "stderr"},
-				Ts:      time.Date(2017, 11, 9, 13, 27, 36, 277747246, time.UTC),
-			},
 		},
 	}
 
 	for _, test := range tests {
-		r := &mockReader{messages: test.input}
-		json := NewDockerJSON(r, test.stream)
+		r := mockReader{message: test.input}
+		json := NewDockerJSON(r)
 		message, err := json.Next()
 
 		assert.Equal(t, test.expectedError, err != nil)
 
-		if err == nil {
+		if !test.expectedError {
 			assert.EqualValues(t, test.expectedMessage, message)
 		}
 	}
 }
 
 type mockReader struct {
-	messages [][]byte
+	message []byte
 }
 
-func (m *mockReader) Next() (Message, error) {
-	message := m.messages[0]
-	m.messages = m.messages[1:]
+func (m mockReader) Next() (Message, error) {
 	return Message{
-		Content: message,
+		Content: m.message,
 	}, nil
 }

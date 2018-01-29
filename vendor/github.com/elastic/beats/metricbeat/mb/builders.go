@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/elastic/beats/libbeat/common"
+	"github.com/elastic/beats/libbeat/logp"
+
 	"github.com/joeshaw/multierror"
 	"github.com/pkg/errors"
-
-	"github.com/elastic/beats/libbeat/common"
 )
+
+var debugf = logp.MakeDebug("mb")
 
 var (
 	// ErrEmptyConfig indicates that modules configuration list is nil or empty.
@@ -48,6 +51,26 @@ func NewModule(config *common.Config, r *Register) (Module, []MetricSet, error) 
 	}
 
 	return module, metricsets, nil
+}
+
+// newBaseModulesFromConfig creates new BaseModules from a list of configs
+// each containing ModuleConfig data.
+func newBaseModulesFromConfig(config []*common.Config) ([]BaseModule, error) {
+	var errs multierror.Errors
+	baseModules := make([]BaseModule, 0, len(config))
+	for _, rawConfig := range config {
+		bm, err := newBaseModuleFromConfig(rawConfig)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		if bm.config.Enabled {
+			baseModules = append(baseModules, bm)
+		}
+	}
+
+	return baseModules, errs.Err()
 }
 
 // newBaseModuleFromConfig creates a new BaseModule from config. The returned
@@ -92,22 +115,16 @@ func initMetricSets(r *Register, m Module) ([]MetricSet, error) {
 		metricsets []MetricSet
 	)
 
-	bms, err := newBaseMetricSets(r, m)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, bm := range bms {
-		registration, err := r.metricSetRegistration(bm.Module().Name(), bm.Name())
+	for _, bm := range newBaseMetricSets(m) {
+		f, hostParser, err := r.metricSetFactory(bm.Module().Name(), bm.Name())
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
 
-		bm.registration = registration
 		bm.hostData = HostData{URI: bm.host}
-		if registration.HostParser != nil {
-			bm.hostData, err = registration.HostParser(bm.Module(), bm.host)
+		if hostParser != nil {
+			bm.hostData, err = hostParser(bm.Module(), bm.host)
 			if err != nil {
 				errs = append(errs, errors.Wrapf(err, "host parsing failed for %v-%v",
 					bm.Module().Name(), bm.Name()))
@@ -116,7 +133,7 @@ func initMetricSets(r *Register, m Module) ([]MetricSet, error) {
 			bm.host = bm.hostData.Host
 		}
 
-		metricSet, err := registration.Factory(bm)
+		metricSet, err := f(bm)
 		if err == nil {
 			err = mustHaveModule(metricSet, bm)
 			if err == nil {
@@ -135,25 +152,15 @@ func initMetricSets(r *Register, m Module) ([]MetricSet, error) {
 }
 
 // newBaseMetricSets creates a new BaseMetricSet for all MetricSets defined
-// in the module's config. An error is returned if no MetricSets are specified
-// in the module's config and no default MetricSet is defined.
-func newBaseMetricSets(r *Register, m Module) ([]BaseMetricSet, error) {
+// in the modules' config.
+func newBaseMetricSets(m Module) []BaseMetricSet {
 	hosts := []string{""}
 	if l := m.Config().Hosts; len(l) > 0 {
 		hosts = l
 	}
 
-	metricSetNames := m.Config().MetricSets
-	if len(metricSetNames) == 0 {
-		var err error
-		metricSetNames, err = r.defaultMetricSets(m.Name())
-		if err != nil {
-			return nil, errors.Errorf("no metricsets configured for module '%s'", m.Name())
-		}
-	}
-
 	var metricsets []BaseMetricSet
-	for _, name := range metricSetNames {
+	for _, name := range m.Config().MetricSets {
 		name = strings.ToLower(name)
 		for _, host := range hosts {
 			metricsets = append(metricsets, BaseMetricSet{
@@ -163,7 +170,7 @@ func newBaseMetricSets(r *Register, m Module) ([]BaseMetricSet, error) {
 			})
 		}
 	}
-	return metricsets, nil
+	return metricsets
 }
 
 // mustHaveModule returns an error if the given MetricSet's Module() method
@@ -197,20 +204,11 @@ func mustImplementFetcher(ms MetricSet) error {
 		ifcs = append(ifcs, "PushMetricSet")
 	}
 
-	if _, ok := ms.(ReportingMetricSetV2); ok {
-		ifcs = append(ifcs, "ReportingMetricSetV2")
-	}
-
-	if _, ok := ms.(PushMetricSetV2); ok {
-		ifcs = append(ifcs, "PushMetricSetV2")
-	}
-
 	switch len(ifcs) {
 	case 0:
 		return fmt.Errorf("MetricSet '%s/%s' does not implement an event "+
 			"producing interface (EventFetcher, EventsFetcher, "+
-			"ReportingMetricSet, ReportingMetricSetV2, PushMetricSet, or "+
-			"PushMetricSetV2)",
+			"ReportingMetricSet, or PushMetricSet)",
 			ms.Module().Name(), ms.Name())
 	case 1:
 		return nil

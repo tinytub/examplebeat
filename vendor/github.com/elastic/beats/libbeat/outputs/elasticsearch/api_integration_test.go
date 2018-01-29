@@ -16,11 +16,13 @@ import (
 )
 
 func TestIndex(t *testing.T) {
-	logp.TestingSetup(logp.WithSelectors("elasticsearch"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"elasticsearch"})
+	}
 
 	index := fmt.Sprintf("beats-test-index-%d", os.Getpid())
 
-	client := getTestingElasticsearch(t)
+	client := GetTestingElasticsearch(t)
 
 	body := map[string]interface{}{
 		"user":      "test",
@@ -38,23 +40,10 @@ func TestIndex(t *testing.T) {
 		t.Fatalf("Index() fails: %s", resp)
 	}
 
-	body = map[string]interface{}{
-		"query": map[string]interface{}{
-			"match_all": map[string]interface{}{},
-		},
-	}
-	_, result, err := client.SearchURIWithBody(index, "", nil, map[string]interface{}{})
-	if err != nil {
-		t.Errorf("SearchUriWithBody() returns an error: %s", err)
-	}
-	if result.Hits.Total != 1 {
-		t.Errorf("Wrong number of search results: %d", result.Hits.Total)
-	}
-
 	params = map[string]string{
 		"q": "user:test",
 	}
-	_, result, err = client.SearchURI(index, "test", params)
+	_, result, err := client.SearchURI(index, "test", params)
 	if err != nil {
 		t.Errorf("SearchUri() returns an error: %s", err)
 	}
@@ -71,7 +60,9 @@ func TestIndex(t *testing.T) {
 func TestIngest(t *testing.T) {
 	type obj map[string]interface{}
 
-	logp.TestingSetup(logp.WithSelectors("elasticsearch"))
+	if testing.Verbose() {
+		logp.LogInit(logp.LOG_DEBUG, "", false, true, []string{"elasticsearch"})
+	}
 
 	index := fmt.Sprintf("beats-test-ingest-%d", os.Getpid())
 	pipeline := fmt.Sprintf("beats-test-pipeline-%d", os.Getpid())
@@ -87,7 +78,7 @@ func TestIngest(t *testing.T) {
 		},
 	}
 
-	client := getTestingElasticsearch(t)
+	client := GetTestingElasticsearch(t)
 	if strings.HasPrefix(client.Connection.version, "2.") {
 		t.Skip("Skipping tests as pipeline not available in 2.x releases")
 	}

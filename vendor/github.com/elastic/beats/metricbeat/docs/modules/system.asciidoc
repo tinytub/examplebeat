@@ -82,8 +82,6 @@ The following metricsets are available:
 
 * <<metricbeat-metricset-system-process_summary,process_summary>>
 
-* <<metricbeat-metricset-system-raid,raid>>
-
 * <<metricbeat-metricset-system-socket,socket>>
 
 * <<metricbeat-metricset-system-uptime,uptime>>
@@ -107,8 +105,6 @@ include::system/network.asciidoc[]
 include::system/process.asciidoc[]
 
 include::system/process_summary.asciidoc[]
-
-include::system/raid.asciidoc[]
 
 include::system/socket.asciidoc[]
 

@@ -246,7 +246,7 @@ func readBlkioValues(path ...string) ([]blkioValue, error) {
 		values = append(values, v)
 	}
 
-	return values, sc.Err()
+	return values, nil
 }
 
 func isColonOrSpace(r rune) bool {

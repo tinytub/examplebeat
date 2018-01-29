@@ -40,41 +40,38 @@ func NewGenerator(indexName, beatName, beatDir, beatVersion string, version comm
 
 // Create the Index-Pattern for Kibana for 5.x and default.
 func (i *IndexPatternGenerator) Generate() (string, error) {
-	idxPattern, err := i.generate()
+	commonFields, err := common.LoadFieldsYaml(i.fieldsYaml)
 	if err != nil {
 		return "", err
 	}
 
+	var path string
+
 	if i.version.Major >= 6 {
-		idxPattern = i.generateMinVersion6(idxPattern)
+		path, err = i.generateMinVersion6(commonFields)
+	} else {
+		path, err = i.generateMinVersion5(commonFields)
 	}
 
-	file := filepath.Join(i.targetDir, i.targetFilename)
-	err = dumpToFile(file, idxPattern)
-
-	return file, err
+	return path, err
 }
 
-func (i *IndexPatternGenerator) generate() (common.MapStr, error) {
-	indexPattern := common.MapStr{
-		"timeFieldName": "@timestamp",
-		"title":         i.indexName,
-	}
-
-	err := i.addGeneral(&indexPattern)
+func (i *IndexPatternGenerator) generateMinVersion5(fields common.Fields) (string, error) {
+	transformed, err := generate(i.indexName, &i.version, fields)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	err = i.addFieldsSpecific(&indexPattern)
-	if err != nil {
-		return nil, err
-	}
-
-	return indexPattern, nil
+	file5x := filepath.Join(i.targetDir, i.targetFilename)
+	err = dumpToFile(file5x, transformed)
+	return file5x, err
 }
 
-func (i *IndexPatternGenerator) generateMinVersion6(attrs common.MapStr) common.MapStr {
+func (i *IndexPatternGenerator) generateMinVersion6(fields common.Fields) (string, error) {
+	transformed, err := generate(i.indexName, &i.version, fields)
+	if err != nil {
+		return "", err
+	}
 	out := common.MapStr{
 		"version": i.beatVersion,
 		"objects": []common.MapStr{
@@ -82,56 +79,37 @@ func (i *IndexPatternGenerator) generateMinVersion6(attrs common.MapStr) common.
 				"type":       "index-pattern",
 				"id":         i.indexName,
 				"version":    1,
-				"attributes": attrs,
+				"attributes": transformed,
 			},
 		},
 	}
-
-	return out
+	file6x := filepath.Join(i.targetDir, i.targetFilename)
+	err = dumpToFile(file6x, out)
+	return file6x, err
 }
 
-func (i *IndexPatternGenerator) addGeneral(indexPattern *common.MapStr) error {
-	kibanaEntries, err := loadKibanaEntriesFromYaml(i.fieldsYaml)
+func generate(indexName string, version *common.Version, f common.Fields) (common.MapStr, error) {
+	transformer, err := newTransformer("@timestamp", indexName, version, f)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	transformed := newTransformer(kibanaEntries).transform()
-	if srcFilters, ok := transformed["sourceFilters"].([]common.MapStr); ok {
-		sourceFiltersBytes, err := json.Marshal(srcFilters)
-		if err != nil {
-			return err
-		}
-		(*indexPattern)["sourceFilters"] = string(sourceFiltersBytes)
-	}
-	return nil
-}
-
-func (i *IndexPatternGenerator) addFieldsSpecific(indexPattern *common.MapStr) error {
-	fields, err := common.LoadFieldsYaml(i.fieldsYaml)
+	transformed, err := transformer.transformFields()
 	if err != nil {
-		return err
-	}
-	transformer, err := newFieldsTransformer(&i.version, fields)
-	if err != nil {
-		return err
-	}
-	transformed, err := transformer.transform()
-	if err != nil {
-		return err
+		return nil, err
 	}
 
 	fieldsBytes, err := json.Marshal(transformed["fields"])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	(*indexPattern)["fields"] = string(fieldsBytes)
+	transformed["fields"] = string(fieldsBytes)
 
 	fieldFormatBytes, err := json.Marshal(transformed["fieldFormatMap"])
 	if err != nil {
-		return err
+		return nil, err
 	}
-	(*indexPattern)["fieldFormatMap"] = string(fieldFormatBytes)
-	return nil
+	transformed["fieldFormatMap"] = string(fieldFormatBytes)
+	return transformed, nil
 }
 
 func clean(name string) string {
@@ -160,9 +138,10 @@ func createTargetDir(baseDir string, version common.Version) string {
 }
 
 func getVersionPath(version common.Version) string {
-	versionPath := "6"
+	versionPath := "default"
 	if version.Major == 5 {
-		versionPath = "5"
+		versionPath = "5.x"
 	}
 	return versionPath
+
 }

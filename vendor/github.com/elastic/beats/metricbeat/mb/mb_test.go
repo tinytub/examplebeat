@@ -68,6 +68,19 @@ func TestModuleConfig(t *testing.T) {
 		},
 		{
 			in: map[string]interface{}{
+				"module": "example",
+			},
+			err: "missing required field accessing 'metricsets'",
+		},
+		{
+			in: map[string]interface{}{
+				"module":     "example",
+				"metricsets": []string{},
+			},
+			err: "empty field accessing 'metricsets'",
+		},
+		{
+			in: map[string]interface{}{
 				"module":     "example",
 				"metricsets": []string{"test"},
 			},
@@ -159,24 +172,6 @@ func TestNewModulesDuplicateHosts(t *testing.T) {
 
 	_, _, err := NewModule(c, r)
 	assert.Error(t, err)
-}
-
-// TestNewModulesWithDefaultMetricSet verifies that the default MetricSet is
-// instantiated when no metricsets are specified in the config.
-func TestNewModulesWithDefaultMetricSet(t *testing.T) {
-	r := newTestRegistry(t, DefaultMetricSet())
-
-	c := newConfig(t, map[string]interface{}{
-		"module": moduleName,
-	})
-
-	_, metricSets, err := NewModule(c, r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assert.Len(t, metricSets, 1) {
-		assert.Equal(t, metricSetName, metricSets[0].Name())
-	}
 }
 
 func TestNewModulesHostParser(t *testing.T) {
@@ -321,7 +316,7 @@ func TestNewBaseModuleFromModuleConfigStruct(t *testing.T) {
 	assert.Empty(t, baseModule.Config().Hosts)
 }
 
-func newTestRegistry(t testing.TB, metricSetOptions ...MetricSetOption) *Register {
+func newTestRegistry(t testing.TB) *Register {
 	r := NewRegister()
 
 	if err := r.AddModule(moduleName, DefaultModuleFactory); err != nil {
@@ -332,7 +327,7 @@ func newTestRegistry(t testing.TB, metricSetOptions ...MetricSetOption) *Registe
 		return &testMetricSet{base}, nil
 	}
 
-	if err := r.addMetricSet(moduleName, metricSetName, factory, metricSetOptions...); err != nil {
+	if err := r.AddMetricSet(moduleName, metricSetName, factory); err != nil {
 		t.Fatal(err)
 	}
 
